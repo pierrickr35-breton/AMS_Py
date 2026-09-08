@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AMS_Py Guide</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style>
+  :root {
+    --bg: #f1ede3;
+    --surface: #fbf9f4;
+    --surface-2: #e9e2d2;
+    --ink: #2b2620;
+    --ink-soft: #6b6152;
+    --ink-faint: #948a78;
+    --line: #ddd4bf;
+    --accent: #2b4c8c;
+    --accent-ink: #ffffff;
+    --accent-soft: #e3e9f4;
+    --rust: #9a4520;
+    --rust-soft: #f3e3da;
+    --code-bg: #eae3d3;
+    --shadow: 0 1px 2px rgba(43,38,32,0.06), 0 8px 24px -12px rgba(43,38,32,0.18);
+    --radius: 10px;
+  }
+
+  :root:not([data-theme="light"]) {
+    @media (prefers-color-scheme: dark) {
+      --bg: #1c1a16;
+      --surface: #242019;
+      --surface-2: #2d2820;
+      --ink: #ece6d8;
+      --ink-soft: #b3a891;
+      --ink-faint: #8a8070;
+      --line: #3c362b;
+      --accent: #7fa0e0;
+      --accent-ink: #14213d;
+      --accent-soft: #263252;
+      --rust: #e0895f;
+      --rust-soft: #3a2620;
+      --code-bg: #2a251d;
+      --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px -12px rgba(0,0,0,0.5);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --bg: #1c1a16;
+    --surface: #242019;
+    --surface-2: #2d2820;
+    --ink: #ece6d8;
+    --ink-soft: #b3a891;
+    --ink-faint: #8a8070;
+    --line: #3c362b;
+    --accent: #7fa0e0;
+    --accent-ink: #14213d;
+    --accent-soft: #263252;
+    --rust: #e0895f;
+    --rust-soft: #3a2620;
+    --code-bg: #2a251d;
+    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px -12px rgba(0,0,0,0.5);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Public Sans", system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1, h2, h3 {
+    font-family: "Fraunces", Georgia, serif;
+    font-weight: 600;
+    text-wrap: balance;
+    color: var(--ink);
+  }
+
+  code, .mono {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+  }
+
+  a { color: var(--accent); }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 260px minmax(0, 1fr);
+    gap: 0;
+    max-width: 1180px;
+    margin: 0 auto;
+  }
+
+  /* ---------- Hero ---------- */
+  .hero {
+    grid-column: 1 / -1;
+    padding: 4rem 2.5rem 2.5rem;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    align-items: flex-end;
+    gap: 2rem;
+    flex-wrap: wrap;
+  }
+
+  .hero-mark {
+    width: 64px;
+    height: 64px;
+    flex: none;
+  }
+
+  .hero-text .eyebrow {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.78rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--rust);
+    margin: 0 0 0.6rem;
+  }
+
+  .hero-text h1 {
+    font-size: clamp(2rem, 4vw, 2.75rem);
+    margin: 0 0 0.5rem;
+    letter-spacing: -0.01em;
+  }
+
+  .hero-text p {
+    margin: 0;
+    max-width: 60ch;
+    color: var(--ink-soft);
+    font-size: 1.05rem;
+  }
+
+  /* ---------- Nav ---------- */
+  nav.toc {
+    padding: 2.5rem 1.5rem 3rem 2.5rem;
+    position: sticky;
+    top: 0;
+    align-self: start;
+    max-height: 100vh;
+    overflow-y: auto;
+  }
+
+  nav.toc .toc-title {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 0 0 0.9rem;
+  }
+
+  nav.toc ul {
+    list-style: none;
+    margin: 0 0 1.75rem;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  nav.toc a {
+    display: block;
+    text-decoration: none;
+    color: var(--ink-soft);
+    font-size: 0.92rem;
+    padding: 0.3rem 0.6rem;
+    border-radius: 7px;
+    border-left: 2px solid transparent;
+  }
+
+  nav.toc a:hover {
+    background: var(--surface-2);
+    color: var(--ink);
+  }
+
+  nav.toc .toc-sub a {
+    padding-left: 1.1rem;
+    font-size: 0.85rem;
+  }
+
+  /* ---------- Main ---------- */
+  main {
+    padding: 2.5rem 2.5rem 6rem 1.5rem;
+    min-width: 0;
+  }
+
+  .intro {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 1.75rem 2rem;
+    margin-bottom: 3rem;
+    box-shadow: var(--shadow);
+  }
+
+  .intro h2 { margin-top: 0; font-size: 1.3rem; }
+
+  .workflow {
+    list-style: none;
+    counter-reset: step;
+    margin: 1.2rem 0 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 0.9rem;
+  }
+
+  .workflow li {
+    counter-increment: step;
+    position: relative;
+    padding: 0.9rem 1rem 0.9rem 2.4rem;
+    background: var(--surface-2);
+    border-radius: 8px;
+    font-size: 0.92rem;
+  }
+
+  .workflow li::before {
+    content: counter(step);
+    position: absolute;
+    left: 0.75rem;
+    top: 0.85rem;
+    font-family: "IBM Plex Mono", monospace;
+    font-weight: 500;
+    font-size: 0.8rem;
+    color: var(--accent);
+  }
+
+  .workflow strong { display: block; color: var(--ink); margin-bottom: 0.15rem; }
+  .workflow span { color: var(--ink-soft); }
+
+  section.menu {
+    margin-bottom: 3.5rem;
+    scroll-margin-top: 1.5rem;
+  }
+
+  section.menu > h2 {
+    font-size: 1.6rem;
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+    margin-bottom: 0.3rem;
+  }
+
+  section.menu > h2 .menu-tag {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.85rem;
+    color: var(--accent);
+    background: var(--accent-soft);
+    padding: 0.15rem 0.55rem;
+    border-radius: 999px;
+    font-weight: 500;
+  }
+
+  section.menu > .menu-desc {
+    color: var(--ink-soft);
+    margin: 0 0 1.5rem;
+    max-width: 68ch;
+  }
+
+  h3.group {
+    font-family: "Public Sans", sans-serif;
+    font-size: 0.78rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    font-weight: 600;
+    margin: 2rem 0 0.75rem;
+    scroll-margin-top: 1.5rem;
+  }
+
+  h3.group:first-of-type { margin-top: 0.5rem; }
+
+  .item {
+    display: grid;
+    grid-template-columns: minmax(180px, 260px) 1fr;
+    gap: 0.4rem 1.4rem;
+    padding: 0.85rem 0;
+    border-top: 1px solid var(--line);
+    align-items: baseline;
+  }
+
+  .item:last-child { border-bottom: 1px solid var(--line); }
+
+  .item .label {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.88rem;
+    color: var(--ink);
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+  }
+
+  .item .desc {
+    color: var(--ink-soft);
+    font-size: 0.95rem;
+  }
+
+  .item .desc strong { color: var(--ink); font-weight: 600; }
+  .item .desc code {
+    background: var(--code-bg);
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    font-size: 0.85em;
+  }
+
+  .shortcut {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.72rem;
+    color: var(--rust);
+    background: var(--rust-soft);
+    padding: 0.08rem 0.4rem;
+    border-radius: 5px;
+    white-space: nowrap;
+  }
+
+  .badge-new {
+    font-family: "Public Sans", sans-serif;
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    padding: 0.03rem 0.4rem;
+    border-radius: 5px;
+    font-weight: 600;
+  }
+
+  .badge-todo {
+    font-family: "Public Sans", sans-serif;
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--ink-faint);
+    border: 1px solid var(--line);
+    padding: 0.03rem 0.4rem;
+    border-radius: 5px;
+  }
+
+  .callout {
+    background: var(--accent-soft);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 8px 8px 0;
+    padding: 0.9rem 1.1rem;
+    margin: 1rem 0;
+    font-size: 0.92rem;
+  }
+
+  .callout strong { color: var(--ink); }
+
+  .codeblock {
+    background: var(--code-bg);
+    border-radius: 8px;
+    padding: 0.9rem 1.1rem;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.8rem;
+    line-height: 1.55;
+    overflow-x: auto;
+    margin: 0.7rem 0 1.3rem;
+    color: var(--ink);
+    white-space: pre;
+  }
+
+  .table-wrap {
+    overflow-x: auto;
+    margin: 0.5rem 0 2rem;
+  }
+
+  table.maptable {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.87rem;
+    min-width: 640px;
+  }
+
+  table.maptable th, table.maptable td {
+    text-align: left;
+    padding: 0.55rem 0.9rem 0.55rem 0;
+    border-top: 1px solid var(--line);
+    vertical-align: top;
+  }
+
+  table.maptable th {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    font-weight: 600;
+  }
+
+  table.maptable td:first-child, table.maptable th:first-child {
+    font-family: "IBM Plex Mono", monospace;
+    white-space: nowrap;
+    color: var(--ink);
+  }
+
+  table.maptable td code {
+    background: var(--code-bg);
+    padding: 0.08rem 0.35rem;
+    border-radius: 4px;
+    font-size: 0.85em;
+  }
+
+  table.maptable td:last-child, table.maptable th:last-child {
+    color: var(--ink-soft);
+  }
+
+  footer {
+    grid-column: 1 / -1;
+    padding: 2.5rem;
+    border-top: 1px solid var(--line);
+    color: var(--ink-faint);
+    font-size: 0.85rem;
+    text-align: center;
+  }
+
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+    nav.toc {
+      position: static;
+      max-height: none;
+      padding: 1.5rem 1.5rem 0;
+      border-bottom: 1px solid var(--line);
+    }
+    nav.toc ul { flex-direction: row; flex-wrap: wrap; margin-bottom: 0.5rem; }
+    nav.toc .toc-sub { display: none; }
+    main { padding: 2rem 1.5rem 4rem; }
+    .item { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <header class="hero">
+    <svg class="hero-mark" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="32" cy="32" r="29" stroke="var(--ink-faint)" stroke-width="1.2"/>
+      <ellipse cx="32" cy="32" rx="29" ry="11" stroke="var(--ink-faint)" stroke-width="1"/>
+      <ellipse cx="32" cy="32" rx="11" ry="29" stroke="var(--ink-faint)" stroke-width="1"/>
+      <circle cx="32" cy="32" r="2" fill="var(--ink)"/>
+      <path d="M32 8 L37 30 L32 32 L27 30 Z" fill="var(--rust)"/>
+      <path d="M32 56 L27 34 L32 32 L37 34 Z" fill="var(--ink-faint)"/>
+    </svg>
+    <div class="hero-text">
+      <p class="eyebrow">Menu reference</p>
+      <h1>AMS_Py</h1>
+      <p>Anisotropy of Magnetic Susceptibility processing software — tensorial mean, stereographic/Flinn plots, MagIC import/export, shared <code>.pmagani</code> file format with its sibling application <strong>STARpaleomag_Py</strong>. This guide describes what each entry in the five menus (AMS&nbsp;Files, AMS&nbsp;data, Mean&nbsp;Results, Calcul, Graphics) does, in the same order they appear on screen.</p>
+    </div>
+  </header>
+
+  <nav class="toc">
+    <p class="toc-title">About</p>
+    <ul>
+      <li><a href="#history">History and foreword</a></li>
+    </ul>
+    <p class="toc-title">Contents</p>
+    <ul>
+      <li><a href="#intro">Data formats</a></li>
+      <li><a href="#workflow">Typical session flow</a></li>
+    </ul>
+    <p class="toc-title">Menus</p>
+    <ul>
+      <li><a href="#files">AMS Files</a></li>
+      <li><a href="#data">AMS data</a></li>
+      <li><a href="#results">Mean Results</a></li>
+      <li><a href="#calcul">Calcul</a></li>
+      <li><a href="#graphics">Graphics</a></li>
+    </ul>
+    <p class="toc-title">Reference</p>
+    <ul>
+      <li><a href="#pmagani">.pmagani file format</a>
+        <ul class="toc-sub">
+          <li><a href="#pmagani-specimen">Specimen section</a></li>
+          <li><a href="#pmagani-mean">Site mean section</a></li>
+        </ul>
+      </li>
+    </ul>
+  </nav>
+
+  <main>
+
+    <section class="intro" id="history">
+      <h2>History and foreword</h2>
+      <p>AMS_Py is the sibling application to <strong>STARpaleomag_Py</strong> — same paleomagnetism laboratory (Institut de Géologie de Rennes), same author (P. Roperch), same Fortran/AWE heritage, and the same low-level graphics primitives (<code>plott</code>, <code>symbol</code>, <code>newpen</code>…) that STARpaleomag_Py's own <code>plotlib.py</code> already ported — reused here rather than re-derived, since both applications trace back to the same Absoft AWE codebase.</p>
+      <p>Where STARpaleomag_Py processes directions and paleointensity, AMS_Py is dedicated to <strong>anisotropy of magnetic susceptibility</strong> (AMS) — the 6- or 15-position kappabridge measurement protocol, the Jelinek (1978) tensorial mean and its confidence ellipses, and the standard shape diagrams (Flinn, T–P′) used to characterize a rock's magnetic fabric. It is a port of <code>AMS_OSX_AWE</code>, the Fortran/Qt5 application that handled this side of the lab's work, following the same rebuild approach as STARpaleomag_Py: Python 3, Tkinter for the interface, Matplotlib for every plot, and PmagPy wherever a MagIC-standard statistic is involved (the Hext 1963 F-test, in particular — see <a href="#calcul">Calcul</a>).</p>
+      <div class="callout">
+        <strong>Open source.</strong> The source code is available on GitHub alongside STARpaleomag_Py. As with its sibling application, researchers and students wishing to use or modify this program are encouraged to do so through Claude.
+      </div>
+    </section>
+
+    <section class="intro" id="intro">
+      <h2>Data formats: .pmagani and .prmag</h2>
+      <p>AMS_Py's own native format is <code>.pmagani</code> — and it is <em>shared byte-for-byte</em> with STARpaleomag_Py: the two applications read and write the exact same column schema, so a <code>.pmagani</code> file can carry STARpaleomag_Py's <code>A0</code>/<code>F0</code> tensors (TRM/ARM anisotropy, from its own 6-position <code>Anisotropy</code> dialog) and AMS_Py's own <code>N0</code> tensors (bulk susceptibility, from a kappabridge) side by side for the same specimen, and either application can read a row the other one wrote. A specimen's site and sample name, needed for MagIC export, are <em>not</em> duplicated into <code>.pmagani</code> — they are looked up from a companion <code>.prmag</code> file of the same base name (STARpaleomag_Py's own working format), opened once via <strong>Open File .prmag…</strong>.</p>
+      <div class="callout">
+        <strong>Why not keep site/sample in .pmagani too?</strong> <code>.pmagani</code> and <code>.prmag</code> are already paired by filename (same base name, same folder) — repeating site/sample in both would just be a second copy to go stale relative to the other. A specimen with no matching <code>.prmag</code> entry is still usable in AMS_Py; only the MagIC export step needs the pairing, and it says so explicitly when a specimen's site/sample is missing rather than exporting a guess.
+      </div>
+      <p style="color:var(--ink-soft); font-size:0.9rem; max-width:68ch;">Legacy data comes from two other places: an <strong>old-style <code>.ANI</code></strong> file (no column headers, the format both applications used before <code>.pmagani</code> existed — still readable directly, or convertible once via <strong>Import legacy .ANI to .pmagani…</strong>), and a plain-text <strong>AGICO Kappabridge report</strong> (a <code>.asc</code> file, straight off the instrument's own SUSAR/Anisoft software) — converted directly to <code>.pmagani</code> by <strong>convert ASC to .pmagani…</strong>, tagged <code>N0</code>.</p>
+    </section>
+
+    <section class="intro" id="workflow">
+      <h2>Typical session flow</h2>
+      <p>Most sessions follow the same sequence:</p>
+      <ol class="workflow">
+        <li><strong>Load</strong><span>AMS Files → Open File .prmag… (locates the companion .pmagani automatically)</span></li>
+        <li><strong>Select</strong><span>AMS data → Select measurements…</span></li>
+        <li><strong>Compute</strong><span>Calcul → Tensorial mean</span></li>
+        <li><strong>Visualize</strong><span>Graphics → Stereographique / Anisotropy parameters</span></li>
+        <li><strong>Export</strong><span>AMS Files → Export to Magic / Export site means to Magic…</span></li>
+      </ol>
+      <div class="callout">
+        <strong>Current orientation (Sample / In situ / Tilt cor.).</strong> Every tensor is reoriented live according to the choice made in AMS&nbsp;data — raw specimen frame, drilling-corrected, or drilling-plus-bedding-corrected. Data is always stored in the specimen frame in <code>.pmagani</code>; changing the orientation changes only what's displayed and what a fresh <code>Tensorial mean</code> computes from, not what's on disk.
+      </div>
+      <div class="callout">
+        <strong>Keyboard shortcuts.</strong> Shown in parentheses after some labels, e.g. <span class="shortcut">Cmd+E</span>. Always <code>Cmd</code> or <code>Cmd+Ctrl</code> — never <code>Ctrl</code> alone, to avoid conflicting with the input field's own editing shortcuts. Matches STARpaleomag_Py's own combinations for the orientation shortcuts (<code>Cmd+Ctrl+A</code>/<code>B</code>/<code>T</code>) so switching between the two applications doesn't mean relearning them.
+      </div>
+    </section>
+
+    <!-- ========================= AMS FILES ========================= -->
+    <section class="menu" id="files">
+      <h2>AMS Files <span class="menu-tag">files</span></h2>
+      <p class="menu-desc">Load data, convert legacy formats, export to MagIC.</p>
+
+      <div class="item">
+        <div class="label">Open File .pmagani… <span class="shortcut">Cmd+O</span></div>
+        <div class="desc">Loads a <code>.pmagani</code> file directly (or an old-style <code>.ANI</code>, read as-is). If opened this way rather than via <strong>Open File .prmag…</strong>, AMS_Py also looks for a companion <code>.prmag</code> of the same base name and loads it automatically, so site/sample lookups for MagIC export work either way round.</div>
+      </div>
+      <div class="item">
+        <div class="label">Open File .prmag…</div>
+        <div class="desc">Loads a <code>.prmag</code> file (STARpaleomag_Py's own format) and automatically locates and loads its companion <code>.pmagani</code>. This is the recommended way in — it guarantees the site/sample lookup needed by <strong>Export to Magic</strong> is available from the start.</div>
+      </div>
+      <div class="item">
+        <div class="label">Liste File .pmagani</div>
+        <div class="desc">Prints every raw tensor currently loaded — the six components as stored, one line per measurement, not the eigen-decomposition (that's <strong>List measurements</strong> below).</div>
+      </div>
+      <div class="item">
+        <div class="label">Import legacy .ANI to .pmagani…</div>
+        <div class="desc">Converts an old-style <code>.ANI</code> file (list-directed Fortran output, no column headers) to the current tab-separated <code>.pmagani</code> format with a proper header row. A one-time upgrade — the old file is untouched.</div>
+      </div>
+      <div class="item">
+        <div class="label">convert ASC to .pmagani…</div>
+        <div class="desc">Converts an AGICO Kappabridge <code>.asc</code> report (the instrument's own SUSAR/Anisoft software output) directly to <code>.pmagani</code>, tagged <code>code2=N0</code>. Orientation (<code>cin</code>/<code>caz</code>/<code>dip</code>/<code>str</code>) and Hext statistics (err.%, F, F12, F23) are carried straight through whenever the report includes them.</div>
+      </div>
+      <div class="item">
+        <div class="label">Export to Magic</div>
+        <div class="desc">Exports every <code>A0</code>/<code>F0</code>/<code>N0</code> tensor in memory as one MagIC <code>specimens.txt</code> row each — trace-normalized <code>aniso_s</code> (<code>s1:s2:s3:s4:s5:s6</code>, summing to 1) plus the matching experiment type: <code>N0</code>→<code>AMS</code>/<code>LP-X</code>, <code>A0</code>→<code>ATRM</code>/<code>LP-AN-TRM</code>, <code>F0</code>→<code>AARM</code>/<code>LP-AN-ARM</code>. Also writes <code>aniso_s_n_measurements</code>/<code>aniso_s_sigma</code>/<code>aniso_ftest</code>/<code>aniso_ftest12</code>/<code>aniso_ftest23</code>/<code>aniso_ftest_quality</code> when the tensor carries Hext statistics, and <code>aniso_tilt_correction="-1"</code> (specimen coordinates — the tensor is exported raw, not reoriented). Site/sample come from the companion <code>.prmag</code>; a specimen with no match is still exported, with those two fields left blank rather than guessed.</div>
+      </div>
+      <div class="item">
+        <div class="label">Export site means to Magic (sites.txt)…</div>
+        <div class="desc">Exports <code>self.mean_results</code> (tensors already computed via <strong>Tensorial mean</strong>, or loaded from a <code>.pmagani</code>'s site-mean section via <strong>Select results</strong>) as one MagIC <code>sites.txt</code> row each — <code>aniso_v1</code>/<code>v2</code>/<code>v3</code> (principal axes as tau:dec:inc:eta/zeta:… Matrix columns), the shape parameters (<code>aniso_p</code>/<code>l</code>/<code>f</code>/<code>t</code>/<code>pp</code>/<code>perc</code>/<code>total</code>/<code>ll</code>/<code>ff</code>/<code>vg</code>/<code>fl</code>), and <code>aniso_tilt_correction</code> derived from the result's own recorded orientation (Sa→<code>-1</code>, IS→<code>0</code>, TC→<code>100</code>). A result whose id doesn't resolve to a single site (mixes specimens from more than one) is skipped and listed in the summary rather than exported under a guessed site name.
+          <div class="callout" style="margin-top:0.6rem;"><strong>eta/zeta caveat.</strong> AMS_Py points eta/zeta toward the <em>other</em> eigenvectors with Jelinek (1978) confidence semi-angles (from <code>Tensorial mean</code>'s own ellipse) — not the pairwise Hext (1963) e12/e13/e23 angles that PmagPy's own AARM/ATRM pipeline computes separately for a 6-position specimen fit. Documented explicitly in each row's <code>description</code> column rather than presented as an equivalence.</div>
+        </div>
+      </div>
+      <div class="item">
+        <div class="label">Export list to Excel <span class="badge-todo">not ported</span></div>
+        <div class="desc">Not yet implemented.</div>
+      </div>
+    </section>
+
+    <!-- ========================= AMS DATA ========================= -->
+    <section class="menu" id="data">
+      <h2>AMS data <span class="menu-tag">selection &amp; orientation</span></h2>
+      <p class="menu-desc">Build a working selection of measurements, and choose the coordinate frame everything else computes in.</p>
+
+      <div class="item">
+        <div class="label">Select measurements <span class="shortcut">Cmd+E</span></div>
+        <div class="desc">Adds matching measurements to the current selection by specimen name (wildcards accepted). <strong>Accumulates</strong> on top of whatever is already selected rather than replacing it — the same behavior as the original Fortran <code>selmes</code>, which only ever grows the list; only <strong>init list to zero</strong> clears it. This lets you build up a selection spanning several specimens (or several separate picks of the same specimen) across multiple calls.</div>
+      </div>
+      <div class="item">
+        <div class="label">List measurements <span class="shortcut">Cmd+L</span></div>
+        <div class="desc">Lists the current selection's principal axes (k1/k2/k3, dec/inc) and shape parameters (L/F/P/P′/T) in the currently chosen orientation — not the raw tensor components (that's <strong>Liste File .pmagani</strong>).</div>
+      </div>
+      <div class="item">
+        <div class="label">List measurements with depth <span class="badge-todo">not ported</span></div>
+        <div class="desc">Not yet implemented.</div>
+      </div>
+      <div class="item">
+        <div class="label">init list to zero <span class="shortcut">Cmd+I</span></div>
+        <div class="desc">Clears the current selection. The only thing that does — see <strong>Select measurements</strong> above.</div>
+      </div>
+      <div class="item">
+        <div class="label">Delete lines <span class="shortcut">Cmd+D</span></div>
+        <div class="desc">Removes one or more measurements from the current selection by line number, after listing them.</div>
+      </div>
+      <div class="item">
+        <div class="label">Sample coordinates <span class="shortcut">Cmd+Ctrl+A</span></div>
+        <div class="desc">Raw specimen frame — no reorientation applied. Every tensor computation and plot uses whichever of these three is active.</div>
+      </div>
+      <div class="item">
+        <div class="label">In situ coordinates <span class="shortcut">Cmd+Ctrl+B</span></div>
+        <div class="desc">Drilling-orientation correction applied (<code>cin</code>/<code>caz</code>), no bedding-tilt correction. Default at startup.</div>
+      </div>
+      <div class="item">
+        <div class="label">Tilt corrected coordinates <span class="shortcut">Cmd+Ctrl+T</span></div>
+        <div class="desc">Drilling correction plus bedding-tilt correction (<code>dip</code>/<code>str</code>).</div>
+      </div>
+    </section>
+
+    <!-- ========================= MEAN RESULTS ========================= -->
+    <section class="menu" id="results">
+      <h2>Mean Results <span class="menu-tag">working list of tensorial means</span></h2>
+      <p class="menu-desc">A separate in-memory list of already-computed site-mean tensors (<code>self.mean_results</code>) — distinct from the raw-measurement selection in AMS&nbsp;data, and from the site-mean section of a <code>.pmagani</code> file on disk. These commands move results between the two.</p>
+
+      <div class="item">
+        <div class="label">Select results</div>
+        <div class="desc">Loads mean tensors already saved in the <em>currently open</em> <code>.pmagani</code>'s site-mean section into the working list. Filtered to the <strong>exact</strong> orientation currently active in AMS&nbsp;data — Sample/In&nbsp;situ/Tilt&nbsp;cor. results are never mixed together in one selection, since only In&nbsp;situ and Tilt&nbsp;corrected share a common (geographic) reference frame in principle, and even that turned out not to be a safe assumption to build a filter on.</div>
+      </div>
+      <div class="item">
+        <div class="label">List results</div>
+        <div class="desc">Lists every tensor currently in the working list — id, site (when the id resolves to one), orientation, and the full Jelinek statistics box for each.</div>
+      </div>
+      <div class="item">
+        <div class="label">init list results</div>
+        <div class="desc">Clears the working list, after confirmation.</div>
+      </div>
+      <div class="item">
+        <div class="label">delete result</div>
+        <div class="desc">Removes one entry from the working list by number, after listing them.</div>
+      </div>
+      <div class="item">
+        <div class="label">Liste results file</div>
+        <div class="desc">Read-only: lists the site-mean section already saved in the currently open <code>.pmagani</code>, without touching the working list. Use <strong>Select results</strong> instead to actually load some of them in.</div>
+      </div>
+      <div class="item">
+        <div class="label">save results in File</div>
+        <div class="desc">Writes the entire working list into the currently open <code>.pmagani</code>'s site-mean section. Always pauses first for a Y/n confirmation, whatever the tensor's own Hext significance — the point is to make sure the numbers get looked at before being written, not to gate saving on the F-test verdict.</div>
+      </div>
+      <div class="item">
+        <div class="label">Correction sondage</div>
+        <div class="desc">Borehole/core reorientation, two methods: (1) recompute each measurement's azimuth from its own k3 (minor) axis declination — orients remanence data using the magnetic foliation itself; or (2) read an external azimuth-correction file (specimen id, correction in degrees) and subtract it from each measurement's azimuth — orients AMS data using an already-known remanence direction. Modifies the current selection in place.</div>
+      </div>
+    </section>
+
+    <!-- ========================= CALCUL ========================= -->
+    <section class="menu" id="calcul">
+      <h2>Calcul <span class="menu-tag">tensor statistics</span></h2>
+      <p class="menu-desc">Compute a tensorial mean, correct a paleomagnetic direction for anisotropy, and combine or compare tensors.</p>
+
+      <div class="item">
+        <div class="label">Tensorial mean <span class="shortcut">Cmd+M</span></div>
+        <div class="desc">Jelinek (1978) tensorial mean of the current selection (at least 3 measurements, in the currently active orientation): eigenvalues, dec/inc of each principal axis, and their 95% confidence ellipses. Shape parameters (L/F/P/P′/T) verified byte-for-byte against a real MagIC contribution's own <code>magicams.txt</code>.
+          <div class="callout" style="margin-top:0.6rem;"><strong>Isotropic tensors are excluded</strong> from the mean automatically (classified via the same Fortran thresholds, kept exact including their asymmetry) — <code>self.mean_results</code>'s reported <code>n</code> is the count actually used, which can be less than the selection size.</div>
+        </div>
+      </div>
+      <div class="item">
+        <div class="label">Mean susceptibility</div>
+        <div class="desc">Arithmetic and geometric mean (plus geometric standard deviation) of the bulk susceptibility across the selection — needs at least 3 measurements. Uses the <em>k2</em> eigenvalue of the de-normalized tensor rather than the scalar <code>s</code> directly, matching the original routine's own convention.</div>
+      </div>
+      <div class="item">
+        <div class="label">Fisher 3 axes <span class="badge-todo">not ported</span></div>
+        <div class="desc">Not yet implemented.</div>
+      </div>
+      <div class="item">
+        <div class="label">Grand cercle <span class="badge-todo">stub in the original Fortran too</span></div>
+        <div class="desc">The original Fortran routine is itself an empty stub — nothing to port.</div>
+      </div>
+      <div class="item">
+        <div class="label">ellipses Bootstrap</div>
+        <div class="desc">The original Fortran routine (<code>bootams</code>) is an empty stub too, so this is new work rather than a port: non-parametric bootstrap (parametric optional) on the current selection, fitting a Kent distribution (zeta/eta) to the resampled eigenvectors via PmagPy's own <code>pmag.s_boot</code>/<code>sbootpars</code> — a genuinely different method from the Jelinek ellipse computed by <strong>Tensorial mean</strong>, not a replacement for it. Needs at least 3 measurements; prompts for the number of draws and whether to plot the resampled cloud, the fitted ellipse, or both.</div>
+      </div>
+      <div class="item">
+        <div class="label">Inverse correction</div>
+        <div class="desc">Corrects a paleomagnetic direction for anisotropy using the <strong>first</strong> tensor in the current selection — a direct port of <code>corpaldir</code>, which the original Fortran's own prompt already warns about ("attention prend le premier tenseur de la liste").</div>
+      </div>
+      <div class="item">
+        <div class="label">Substraction of tensors</div>
+        <div class="desc">Subtracts one tensor from another for exactly two measurements in the current selection. The list variant (several pairs at once, <code>soustractliste</code> in the original Fortran) is not yet ported.</div>
+      </div>
+    </section>
+
+    <!-- ========================= GRAPHICS ========================= -->
+    <section class="menu" id="graphics">
+      <h2>Graphics <span class="menu-tag">plots</span></h2>
+      <p class="menu-desc">Stereographic projections, shape diagrams, and SVG export.</p>
+
+      <div class="item">
+        <div class="label">Stereographique <span class="shortcut">Cmd+Ctrl+S</span></div>
+        <div class="desc">Principal axes (k1/k2/k3) of the raw selection and/or already-computed mean tensors, prompted the same way as <strong>Anisotropy parameters</strong> below (data/results/both). Mean-result symbols are drawn twice the size of individual measurements to tell them apart, with their 95% confidence ellipses — the part that exits the lower hemisphere is drawn dashed in the upper hemisphere, folded back onto the same azimuth rather than projected outside the primitive circle.</div>
+      </div>
+      <div class="item">
+        <div class="label">Stereographic sample</div>
+        <div class="desc">Walks the current selection specimen by specimen (grouped by consecutive id): for each one, its measurement list (with the <code>A0</code> comment), its stereogram, then its Flinn/P′–T shape diagram — the same "Return for next sample" rhythm as the original Fortran.</div>
+      </div>
+      <div class="item">
+        <div class="label">parametres projection</div>
+        <div class="desc">Stereographic vs. equal-area (Lambert) projection, and whether negative inclinations are inverted onto the primitive circle rather than plotted with a distinct open symbol. The custom projection radius the original Fortran also prompts for is not asked here — it's a confirmed real bug in the source (<code>rdim</code> is silently ignored, always 15.0, whatever's typed), not worth reproducing.</div>
+      </div>
+      <div class="item">
+        <div class="label">Anisotropy parameters <span class="shortcut">Cmd+Ctrl+P</span></div>
+        <div class="desc">Flinn diagram and T–P′ diagram together on one page — a single menu entry replacing what used to be two separate Fortran ones. Source is prompted the same way as <strong>Stereographique</strong>: raw data (0), already-computed mean results (1), or both (2). Specimen ids are annotated next to points only below 15 measurements, to avoid clutter.</div>
+      </div>
+      <div class="item">
+        <div class="label">AMS &gt;&gt; fichiers GMT <span class="badge-todo">stub in the original Fortran too</span></div>
+        <div class="desc">The original Fortran routine is itself an empty stub — nothing to port.</div>
+      </div>
+      <div class="item">
+        <div class="label">Export SVG…</div>
+        <div class="desc">Exports whichever plot is currently displayed to an SVG file — matplotlib writes it directly from the Figure, no separate export code needed. Works mid-loop, same as in STARpaleomag_Py: nothing stops you from using it while a batch dialog (<strong>Stereographic sample</strong>, for instance) is paused waiting for your next input — the menu stays fully clickable.</div>
+      </div>
+    </section>
+
+    <!-- ========================= .PMAGANI FORMAT ========================= -->
+    <section class="menu" id="pmagani">
+      <h2>.pmagani file format <span class="menu-tag">reference</span></h2>
+      <p class="menu-desc">Two sections in the same file — specimen tensors, then site-mean tensors — each with its own column schema, exactly the way STARpaleomag_Py's own <code>.pmagres</code> separates specimen results from site means. An older <code>.pmagani</code> written before the site-mean section existed has no marker for it at all, and is read entirely as the specimen section, unchanged.</p>
+
+      <h3 class="group" id="pmagani-specimen">Specimen section</h3>
+      <p style="color:var(--ink-soft); max-width:68ch;">Marked by the header line <code>#specimen tensor results</code>. One row per tensor variant — <code>code2</code> distinguishes <code>A0</code>/<code>F0</code> (STARpaleomag_Py, TRM/ARM anisotropy) from <code>N0</code> (AMS_Py, bulk susceptibility) and the 14 STARpaleomag_Py jackknife variants (<code>A+</code>/<code>A-</code>/<code>A1</code>…<code>B6</code>, read-only diagnostics as far as AMS_Py is concerned). Same column-for-column schema on both applications: <code>specimen, code2, etape, k11, k22, k33, k12, k23, k13, s(SI*1e-5), n_positions, sigma, ftest, ftest12, ftest23, quality, info</code> — raw (not trace-normalized) tensor components, in the specimen frame.</p>
+
+      <h3 class="group" id="pmagani-mean">Site mean section</h3>
+      <p style="color:var(--ink-soft); max-width:68ch;">Marked by the header line <code>#site mean tensor results</code>, always at the end of the file — a new specimen row is inserted <em>before</em> this marker if it already exists, never appended after it, so the two sections never get interleaved. Deliberately a <em>different</em> schema from the specimen section, not raw tensor components: principal axes (k1≥k2≥k3, Jelinek convention) with dec/inc and 95% confidence half-angles per axis, plus the shape parameters.</p>
+      <div class="table-wrap">
+        <table class="maptable">
+          <thead><tr><th>Column</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td>site, code2, n</td><td>site name, tensor type, number of specimens actually used in the mean (isotropic tensors excluded)</td></tr>
+            <tr><td>k1, k2, k3</td><td>principal eigenvalues, decreasing</td></tr>
+            <tr><td>dec1, inc1 … dec3, inc3</td><td>declination/inclination of each principal axis</td></tr>
+            <tr><td>alpha1_1, alpha2_1 …</td><td>95% confidence half-angles (major/minor) around each axis, Jelinek (1978)</td></tr>
+            <tr><td>P, T, L, F, Pprim</td><td>shape parameters of the mean tensor</td></tr>
+            <tr><td>info</td><td>free text — carries the orientation this mean was computed in (<code>tilt_correction: -1/0/100</code>, the same MagIC-style code used for <code>aniso_tilt_correction</code>) since the column schema itself has no dedicated orientation field</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout">
+        <strong>Written and read by both applications.</strong> AMS_Py can read a site mean STARpaleomag_Py wrote and vice versa — the format was extended once, in the shared schema, rather than each application inventing its own site-mean file.
+      </div>
+    </section>
+
+  </main>
+
+  <footer>
+    AMS_Py — Python port of the AMS_OSX_AWE software (paleomagnetism laboratory, Géosciences Rennes), sibling application to STARpaleomag_Py.
+  </footer>
+
+</div>
+</body>
+</html>

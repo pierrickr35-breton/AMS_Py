@@ -561,7 +561,7 @@ def format_tsmean_box(result: TensorialMeanResult, orientation: int = 2) -> str:
     d'arrondi lie aux valeurs d'entree de test, pas un defaut de
     formatage)."""
     if result.ellipsoid_type == 0 or not result.axes:
-        return " Tenseur moyen isotrope - pas de statistiques d'axes.\n"
+        return " Isotropic mean tensor - no axis statistics.\n"
 
     k1, k2, k3 = (ax.eigenvalue for ax in result.axes)
     bulk = (k1 + k2 + k3) / 3.0

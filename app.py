@@ -297,7 +297,7 @@ class AmsApp:
         files_menu = tk.Menu(menubar, tearoff=0)
         files_menu.add_command(label=self._labeled("Open File .pmagani...", "openani"), command=self.ouvrir_ani_dialog)
         files_menu.add_command(label="Open File .prmag...", command=self.ouvrir_prmag_dialog)
-        files_menu.add_command(label="Liste File .pmagani", command=self.lister_fichier_ani)
+        files_menu.add_command(label="List File .pmagani", command=self.lister_fichier_ani)
         files_menu.add_separator()
         files_menu.add_command(label="Import legacy .ANI to .pmagani...", command=self.ouvrir_import_legacy_ani_dialog)
         files_menu.add_command(label="convert ASC to .pmagani...", command=self.ouvrir_convert_asc_dialog)
@@ -345,7 +345,7 @@ class AmsApp:
         calcul_menu.add_command(label="Mean susceptibility", command=self.ouvrir_mds_dialog)
         calcul_menu.add_separator()
         calcul_menu.add_command(label="Fisher 3 axes", command=lambda: self._not_implemented("Fisher 3 axes"))
-        calcul_menu.add_command(label="Grand cercle", command=lambda: self._not_implemented("Grand cercle (stub in the original Fortran too)"))
+        calcul_menu.add_command(label="Great circle", command=lambda: self._not_implemented("Great circle (stub in the original Fortran too)"))
         calcul_menu.add_separator()
         calcul_menu.add_command(label="ellipses Bootstrap", command=self.ouvrir_bootstrap_dialog)
         calcul_menu.add_separator()
@@ -366,7 +366,7 @@ class AmsApp:
             label="Susceptibility / anisotropy degree", command=self.afficher_susceptibility_anisotropy)
         graphics_menu.add_command(
             label="Im vs Re susceptibility", command=self.afficher_im_re_susceptibility)
-        graphics_menu.add_command(label="AMS >> fichiers GMT", command=lambda: self._not_implemented("AMS >> fichiers GMT (stub in the original Fortran too)"))
+        graphics_menu.add_command(label="AMS >> GMT files", command=lambda: self._not_implemented("AMS >> GMT files (stub in the original Fortran too)"))
         graphics_menu.add_separator()
         graphics_menu.add_command(label="Export SVG...", command=self.exporter_svg)
         menubar.add_cascade(label="Graphics", menu=graphics_menu)
@@ -919,7 +919,7 @@ class AmsApp:
         smax = self._console_input("Step Max: ", "9000")
         if smax is None:
             return
-        code = self._console_input("Code NRM Th or AF (exemple N0): ", "*")
+        code = self._console_input("Code NRM Th or AF (example N0): ", "*")
         if code is None:
             return
         code = code.strip()
@@ -1243,7 +1243,7 @@ class AmsApp:
             self._showwarning(
                 "No data", "Select measurements and/or compute a tensorial mean first.")
             return
-        src_s = self._console_input("donnees(0) resultats(1) d+r(2) : ", str(self._aniso_source))
+        src_s = self._console_input("data(0) results(1) d+r(2) : ", str(self._aniso_source))
         if src_s is None:
             return
         try:
@@ -1267,7 +1267,7 @@ class AmsApp:
             self._showwarning(
                 "No data", "Select measurements and/or compute a tensorial mean first.")
             return
-        src_s = self._console_input("donnees(0) resultats(1) d+r(2) : ", "0")
+        src_s = self._console_input("data(0) results(1) d+r(2) : ", "0")
         if src_s is None:
             return
         try:
@@ -1486,7 +1486,7 @@ class AmsApp:
             return
         tensor = self.selection[0]
         x1, y1, z1 = correct_direction_with_tensor(tensor, intensity, dec, inc)
-        self._afficher(f"Corr Inverse Tenseur: Int:{x1:5.1f} Dec:{y1:6.1f} Inc:{z1:6.1f}\n")
+        self._afficher(f"Inverse Correction Tensor: Int:{x1:5.1f} Dec:{y1:6.1f} Inc:{z1:6.1f}\n")
 
     def ouvrir_soustract_dialog(self):
         """Equivalent de `soustract` pour exactement 2 mesures (Util_AMS.f95:158-283)
@@ -1498,7 +1498,7 @@ class AmsApp:
                 "Select exactly 2 measurements (soustractliste, for several "
                 "consecutive pairs, is not yet ported).")
             return
-        pct_s = self._console_input("% de soustraction entre 1 et 100 : ", "100")
+        pct_s = self._console_input("% subtraction between 1 and 100 : ", "100")
         if pct_s is None:
             return
         try:
@@ -1646,7 +1646,7 @@ class AmsApp:
             elif not any(is_imaginary_component(m) for m in filtered):
                 res.source_code2 = "RE"
             if res.ellipsoid_type == 0:
-                self._afficher(f"{prefix}Tenseur moyen isotrope - pas de statistiques d'axes.\n")
+                self._afficher(f"{prefix}Isotropic mean tensor - no axis statistics.\n")
                 continue
 
             header = f"--- {label} ---\n" if label else ""

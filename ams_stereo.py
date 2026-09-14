@@ -340,7 +340,7 @@ def build_stereo_figure(
 
     ax.relim()
     ax.autoscale_view()
-    ax.set_title(", ".join(m.id for m in measurements) if len(measurements) <= 3 else f"{len(measurements)} mesures")
+    ax.set_title(", ".join(m.id for m in measurements) if len(measurements) <= 3 else f"{len(measurements)} measurements")
     fig.tight_layout()
     return fig
 

@@ -64,6 +64,41 @@ def eigen_decompose(a: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
     return w[order], v[:, order]
 
 
+def negative_k_corrected_tensor(a: np.ndarray) -> np.ndarray:
+    """Corrige un tenseur ORIENTE `a` (voir `ams_selection.apply_
+    orientation`) d'une mesure a susceptibilite negative (`m.s < 0` -
+    tenseur entier deja retourne par Agico, code2="I-") AVANT de le
+    moyenner avec d'autres (voir app.ouvrir_tsmean_dialog) : la direction
+    associee a la plus grande valeur propre d'un tel tenseur correspond en
+    pratique a kmin_phys (et inversement) - meme constat empirique que
+    `ams_stats.principal_axes` (voir sa docstring, verifie sur 15 paires
+    Re/Im reelles de 24WH.asc), demande explicite utilisateur ("les
+    tenseurs moyens de Im negatifs ont aussi le kmax et le kmin
+    intervertis").
+
+    Pour un AFFICHAGE (`principal_axes`), simplement RELABELISER les
+    directions apres decomposition suffit - mais pour une MOYENNE, cette
+    correction doit se faire sur le TENSEUR lui-meme, AVANT de sommer/
+    moyenner (demande explicite utilisateur - "comment faire une moyenne
+    pour un site avec une partie des echantillons avec des Kim negatifs
+    et d'autres positifs") : un site melangeant des specimens negatifs et
+    positifs a un axe "grande valeur propre" qui ne represente PAS le
+    meme role physique (kmax pour les positifs, kmin pour les negatifs)
+    d'un specimen a l'autre - moyenner les tenseurs bruts tels quels
+    reviendrait a additionner des axes incoherents entre eux. Reconstruit
+    le tenseur avec les MEMES vecteurs propres mais les valeurs propres
+    extremes echangees (`av[0]<->av[2]`, `av[1]`/kint inchange - meme
+    invariant que `principal_axes`) : `V @ diag(av3,av2,av1) @ V.T`.
+    Pour un groupe HOMOGENE (tout negatif, ou tout positif) le resultat
+    est equivalent (aux imprecisions numeriques pres) a moyenner sans
+    corriger puis ne relabeliser que la moyenne finale - mais seule cette
+    version, appliquee mesure par mesure, reste correcte pour un groupe
+    MELANGE."""
+    av, vecs = eigen_decompose(a)
+    av2 = av[[2, 1, 0]]
+    return vecs @ np.diag(av2) @ vecs.T
+
+
 def classify_ellipsoid(av: np.ndarray) -> int:
     """Equivalent de la classification isotrope/prolate/oblate/triaxial de
     `elprop` (seuils EXACTS, y compris leur asymetrie - anisotropie.f:1130-1150) :
@@ -91,7 +126,23 @@ def shape_params(k1: float, k2: float, k3: float) -> dict:
     """Equivalent de `param`/`paramres`/`paramech` (anisotropie.f:1804-1877,
     3336-3380) : k1>=k2>=k3 valeurs propres (unites physiques). Formules
     verifiees EXACTES contre magicams.txt reel (P/P'/L/F, site 98PL0401A) :
-    P'=exp(sqrt(2*sum((ln(ki)-mean)^2))), T=(2*eta2-eta1-eta3)/(eta1-eta3)."""
+    P'=exp(sqrt(2*sum((ln(ki)-mean)^2))), T=(2*eta2-eta1-eta3)/(eta1-eta3).
+
+    k1/k2/k3 non tous strictement positifs (susceptibilite negative -
+    voir ams_asc.py, code2="I-" : le tenseur entier est retourne mais un
+    axe individuel peut rester negatif, confirme sur un vrai specimen
+    KLY5 de 24WH.asc) rendent alog() indefini - en Fortran comme en
+    Python (`math.log` d'un negatif : ValueError, crash reel reproduit
+    sur "List measurements"/Flinn/XY plots des que la selection contient
+    un tel specimen). Retourne NaN partout plutot que de planter -
+    l'appelant affiche alors "nan"/"n/a" pour ce point au lieu de perdre
+    toute la liste/le graphe."""
+    if k1 <= 0.0 or k2 <= 0.0 or k3 <= 0.0:
+        nan = float("nan")
+        return {
+            "k0": nan, "km": (k1 + k2 + k3) / 3.0, "pan": nan, "P": nan, "Pprim": nan, "T": nan,
+            "L": nan, "F": nan, "am1": nan, "am2": nan, "am3": nan, "r": nan, "ak": nan,
+        }
     k0 = (k1 * k2 * k3) ** (1.0 / 3.0)
     km = (k1 + k2 + k3) / 3.0
     pan = (k1 - k3) / k3 * 100.0
@@ -154,6 +205,23 @@ class TensorialMeanResult:
     mean_tensor_normalized: Optional[np.ndarray] = None  # trace = 3
     ellipsoid_type: int = -1
     id: str = ""
+    # "RE"/"IM" quand TOUTES les mesures moyennees venaient du meme canal
+    # (voir app.ouvrir_tsmean_dialog, qui separe deja Re/Im - "pour le
+    # calcul des tenseurs moyens, il vaut mieux separer Re et Im") ; None
+    # sinon (groupe mixte ou source non classifiee). Utilise par app.
+    # _save_mean_results_to_pmagani pour FORCER le code2 ecrit dans le
+    # .pmagani a "RE"/"IM" plutot que de le redemander a l'utilisateur -
+    # demande explicite utilisateur ("force the code to Re and Im when
+    # saving the results in the file").
+    source_code2: Optional[str] = None
+    # "Y"/"N" - inclus dans l'export MagIC ou non, colonne .pmagani
+    # DEDIEE (meme convention/schema que AMSMeasurement.export - le
+    # niveau specimen) - demande explicite utilisateur ("is it possible
+    # to export from AMS_py only the data and mean tensors that we want
+    # to export"). "Y" par defaut : un fichier jamais touche par
+    # app.ouvrir_marquer_export_dialog continue d'exporter TOUTES ses
+    # moyennes, comme avant cette fonctionnalite.
+    export: str = "Y"
 
 
 def erbar(eigenvectors: np.ndarray, cov6: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
@@ -345,10 +413,25 @@ def principal_axes(
     (`ams_stereo`), qui a SA PROPRE logique de retournement (`iinv`,
     distincte de celle de `liste` - un axe d'inclinaison negative y garde
     sa position reelle avec un symbole different si `iinv` n'est pas
-    actif, transcrit de `stereo`/`stereo2`)."""
+    actif, transcrit de `stereo`/`stereo2`).
+
+    `m.s < 0` (susceptibilite negative - voir ams_asc.py, tenseur entier
+    deja retourne par Agico, code2="I-") : le vecteur associe a la plus
+    grande valeur propre (apres ce retournement) correspond en pratique a
+    la direction kmin du signal REEL du meme specimen, et inversement -
+    verifie directement sur 15 paires Re/Im reelles de 24WH.asc (chaque
+    axe Im s'aligne avec l'axe Re oppose une fois les DIRECTIONS k1/k3
+    echangees) - demande explicite utilisateur ("flip the vector kmax
+    and kmin for negative susceptibility ... more coherent with what is
+    observed for the real part"). Seules les DIRECTIONS (dec/inc) sont
+    echangees entre les positions 0 et 2 - les valeurs propres restent a
+    leur position (tri decroissant inchange), pour que L/F/P/T/P'
+    (ams_stats.shape_params, purs ratios de valeurs propres) restent
+    calcules exactement comme avant ; seul le libelle "quel axe est
+    kmax/kmin" change pour ce cas."""
     a = apply_orientation(m, orientation)
     av, vecs = eigen_decompose(a)
-    axes = []
+    dirs = []
     for i in range(3):
         x, y, z = vecs[0, i], vecs[1, i], vecs[2, i]
         _, dec, inc = _rpc(x, y, z)
@@ -357,8 +440,10 @@ def principal_axes(
             dec += 180.0
             if dec > 360.0:
                 dec -= 360.0
-        axes.append((float(av[i]), dec, inc))
-    return axes
+        dirs.append((dec, inc))
+    if m.s < 0.0:
+        dirs[0], dirs[2] = dirs[2], dirs[0]
+    return [(float(av[i]), dirs[i][0], dirs[i][1]) for i in range(3)]
 
 
 def format_measurement_list(measurements: List[AMSMeasurement], orientation: int) -> str:

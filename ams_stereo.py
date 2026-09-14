@@ -26,7 +26,7 @@ from typing import List, Optional, Tuple
 import numpy as np
 from matplotlib.figure import Figure
 
-from ams_selection import AMSMeasurement
+from ams_selection import AMSMeasurement, is_imaginary_component
 from ams_stats import principal_axes, TensorialMeanResult
 from ams_bootstrap import BootstrapResult
 from plotlib import PlotContext
@@ -120,8 +120,27 @@ def draw_stereo_net(
 # pleins pour un axe "positif", ouverts pour un axe negatif non inverse.
 _IPOS = {1: 11, 2: 2, 3: 7}   # -> plein : carre(15) / triangle(16) / cercle(14)
 _NEG = {1: 5, 2: 20, 3: 19}   # -> ouvert : carre(9) / triangle(10) / cercle(8)
-_AXIS_PEN = {1: 3, 2: 4, 3: 5}  # rouge/vert/bleu - meme convention que stereoNRMTRM (STARpaleomag_Py)
-_AXIS_COLOR = {1: "red", 2: "green", 3: "blue"}
+# BUG REEL corrige ici (demande explicite utilisateur, "is it possible to
+# keep the Kmin in green as in the old app") : verifie directement contre
+# le VRAI source Fortran (reference/AMS_OSX_AWE/anisotropie.f, subroutine
+# `stereo` ligne ~2097-2103 ET `tratm` ligne ~2431-2433) - dans les DEUX,
+# `ipen=i*2+1` PUIS un override explicite `if(i==3) ipen=4` : i=1(kmax)
+# -> pen 3 (rouge), i=2(kint) -> pen 5 (bleu, PAS d'override), i=3(kmin)
+# -> pen 4 (VERT, via l'override). Le port precedent utilisait la formule
+# SANS l'override (pen 4 pour kint, pen 5 pour kmin) - kint et kmin
+# avaient donc leurs couleurs INTERVERTIES par rapport a l'appli
+# d'origine depuis le debut du port.
+_AXIS_PEN = {1: 3, 2: 5, 3: 4}  # rouge(kmax)/bleu(kint)/vert(kmin)
+_AXIS_COLOR = {1: "red", 2: "blue", 3: "green"}
+# RGB exacts des memes couleurs (matplotlib "red"/"blue"/"green"), pour
+# newpencol : point Im = stroke couleur d'axe + fill gris (au lieu de
+# stroke=fill=couleur d'axe pour un point Re) - demande explicite
+# utilisateur ("mettre les tenseurs d'Im avec un fill en gris et le
+# stroke color rouge vert bleu ... pour differencier les Re des Im").
+_AXIS_RGB = {1: (255, 0, 0), 2: (0, 0, 255), 3: (0, 128, 0)}
+_IM_FILL_RGB = (160, 160, 160)
+# ratio symbole moyenne/mesure individuelle - voir draw_stereo_mean_results
+_MEAN_SIZE_RATIO = 5.0 / 3.0
 
 
 def draw_stereo_axes(
@@ -142,6 +161,7 @@ def draw_stereo_axes(
     reelle avec le symbole "neg" (ouvert)."""
     ctx.thickn(0.5)
     for m in measurements:
+        im = is_imaginary_component(m)
         axes = principal_axes(m, orientation, flip_negative_inclination=False)
         for j, (_ev, dec, inc) in enumerate(axes, start=1):
             sym = _IPOS[j]
@@ -154,7 +174,11 @@ def draw_stereo_axes(
                 else:
                     sym = _NEG[j]
             x, y = stecor(dec, inc, r, ams_iproj)
-            ctx.newpen(_AXIS_PEN[j])
+            if im:
+                sr, sg, sb = _AXIS_RGB[j]
+                ctx.newpencol(sr, sg, sb, *_IM_FILL_RGB)
+            else:
+                ctx.newpen(_AXIS_PEN[j])
             _symbo1(ctx, x, y, point_size, sym)
     ctx.newpen(1)
 
@@ -243,8 +267,13 @@ def draw_stereo_mean_results(
     """Equivalent de `tratm` (anisotropie.f:2391-2481, trace des axes
     k1/k2/k3 des tenseurs moyens deja calcules + leurs ellipses de
     confiance a 95%, voir `draw_stereo_confidence_ellipses`). Meme
-    convention symbole/couleur que `draw_stereo_axes`, mais plus gros (2x)
-    pour distinguer un resultat moyen d'une mesure individuelle."""
+    convention symbole/couleur que `draw_stereo_axes`, mais plus gros
+    (_MEAN_SIZE_RATIO) pour distinguer un resultat moyen d'une mesure
+    individuelle - demande explicite utilisateur ("is it possible to
+    reduce the size of the symbols for mean tensors") : le port utilisait
+    un facteur 2.0x arbitraire, plus grand que le VRAI ratio Fortran
+    (`stereo`, h=r/15 pour les moyennes vs h=r/25 pour les mesures
+    individuelles, anisotropie.f:2091/2117 - soit 25/15 = 5/3)."""
     ctx.thickn(1.0)
     for res in results:
         if not res.axes:
@@ -262,7 +291,7 @@ def draw_stereo_mean_results(
                     sym = _NEG[j]
             x, y = stecor(dec, inc, r, ams_iproj)
             ctx.newpen(_AXIS_PEN[j])
-            _symbo1(ctx, x, y, point_size * 2.0, sym)
+            _symbo1(ctx, x, y, point_size * _MEAN_SIZE_RATIO, sym)
     ctx.newpen(1)
     draw_stereo_confidence_ellipses(ctx, results, r, invert_negative, ams_iproj)
 
@@ -306,7 +335,7 @@ def build_stereo_figure(
     ]
     if mean_results:
         handles.append(Line2D([0], [0], marker="s", color="black", linestyle="",
-                               markerfacecolor="none", markersize=9, label="mean (2x)"))
+                               markerfacecolor="none", markersize=8, label="mean (5/3x)"))
     ax.legend(handles=handles, loc="upper right", fontsize=8, frameon=False)
 
     ax.relim()

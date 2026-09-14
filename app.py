@@ -11,6 +11,7 @@ of tensors). Tensorial mean/Mean Results/Graphics dependent des statistiques
 de Hext/Jelinek (anisotropie.f, tsmean/fisherams/flinn/tpprim/stereo) - EN
 COURS DE PORTAGE, stubs clairement marques ci-dessous."""
 
+import math
 import os
 import subprocess
 import sys
@@ -32,6 +33,9 @@ from ams_selection import (
     write_ani_mean_result,
     read_ani_mean_results,
     read_ani_mean_results_from_pmagani,
+    is_imaginary_component,
+    mark_pmagani_export,
+    _ORIENT_TO_FILE_CODE,
 )
 from ams_prmag import read_prmag_specimens, ani_path_for
 from ams_asc import import_asc_file
@@ -40,12 +44,16 @@ from ams_bootstrap import compute_bootstrap_mean, format_bootstrap_result
 from ams_stats import (
     tsmean, mean_susceptibility, format_measurement_list, format_tsmean_box,
     format_lisresmem_table, magic_site_aniso_fields, principal_axes,
+    negative_k_corrected_tensor, shape_params,
 )
 from ams_stereo import build_stereo_figure, build_bootstrap_stereo_figure
 from ams_xy import (
     build_anisotropy_parameters_figure,
     shape_entries_from_measurements,
     shape_entries_from_mean_results,
+    build_susceptibility_anisotropy_figure,
+    build_im_re_susceptibility_figure,
+    P_OUTLIER_THRESHOLD,
 )
 
 
@@ -132,6 +140,15 @@ class AmsApp:
         self.ams_iproj = 0  # 'paramster' : 0=lambert/equiaire (defaut Fortran), 1=stereographique
         self.invert_negative = True  # 'iinv' (paramster) : defaut 'y'
         self._aniso_source = 0  # 'Anisotropy parameters' : 0=donnees,1=resultats,2=d+r
+        # bornes hautes d'echelle (haut/bas) choisies par l'utilisateur
+        # pour "Anisotropy parameters" - None = auto (voir ams_xy.build_
+        # anisotropy_parameters_figure) - demande explicite utilisateur
+        # ("est-ce possible de selectionner l'echelle"), INDEPENDANTES
+        # entre les deux panneaux (correction ulterieure : "the scale
+        # should not apply to both plots (Re et Im) as they have very
+        # different ranges").
+        self._aniso_scale_top = None
+        self._aniso_scale_bottom = None
         self._last_bootstrap = None  # dernier BootstrapResult calcule (pour le plot bootstrap)
         self._bootstrap_show_cloud = True
         self._bootstrap_show_ellipse = True
@@ -147,6 +164,12 @@ class AmsApp:
         self.canvas_fig = FigureCanvasTkAgg(self.fig, master=self.graph_frame)
         self.canvas_fig.get_tk_widget().pack(fill=tk.BOTH, expand=True)
         self.paned_window.add(self.graph_frame, weight=1)
+        # Clic-pour-info sur un point du graphique "Anisotropy parameters"
+        # (id specimen) et clic-sur-axe-X pour en changer l'echelle - voir
+        # ams_xy._register_point_pick/_register_xaxis_pick - demande
+        # explicite utilisateur ("click on point to have the specimen
+        # number" / "click on the X axis to change the max value").
+        self.canvas_fig.mpl_connect("pick_event", self._on_plot_pick)
 
         self.text_frame = ttk.Frame(self.paned_window, width=550)
         self.text_area = tk.Text(
@@ -283,6 +306,9 @@ class AmsApp:
         files_menu.add_command(
             label="Export site means to Magic (sites.txt)...",
             command=self.ouvrir_export_site_means_magic_dialog)
+        files_menu.add_command(
+            label="Mark selection for MagIC export...",
+            command=self.ouvrir_marquer_export_dialog)
         files_menu.add_separator()
         files_menu.add_command(label="Export list to Excel", command=lambda: self._not_implemented("Export list to Excel"))
         menubar.add_cascade(label="AMS Files", menu=files_menu)
@@ -331,10 +357,15 @@ class AmsApp:
         graphics_menu = tk.Menu(menubar, tearoff=0)
         graphics_menu.add_command(label=self._labeled("Stereographique", "stereo"), command=self.afficher_stereo)
         graphics_menu.add_command(label="Stereographic sample", command=self.ouvrir_stereo_sample_dialog)
+        graphics_menu.add_command(label="Stereographic site", command=self.ouvrir_stereo_site_dialog)
         graphics_menu.add_command(label="parametres projection", command=self.ouvrir_paramster_dialog)
         graphics_menu.add_separator()
         graphics_menu.add_command(
             label=self._labeled("Anisotropy parameters", "aniso"), command=self.afficher_anisotropy_parameters)
+        graphics_menu.add_command(
+            label="Susceptibility / anisotropy degree", command=self.afficher_susceptibility_anisotropy)
+        graphics_menu.add_command(
+            label="Im vs Re susceptibility", command=self.afficher_im_re_susceptibility)
         graphics_menu.add_command(label="AMS >> fichiers GMT", command=lambda: self._not_implemented("AMS >> fichiers GMT (stub in the original Fortran too)"))
         graphics_menu.add_separator()
         graphics_menu.add_command(label="Export SVG...", command=self.exporter_svg)
@@ -391,16 +422,37 @@ class AmsApp:
         prmag_specimens (jointure par numero de specimen) - cin/caz/dip/str
         ne sont plus stockes dans .pmagani lui-meme ("the codes cin caz dip
         str are now not needed if the pmagani is linked to the prmag
-        file"). Retourne le nombre de mesures sans specimen correspondant
-        dans le .prmag (orientation restee a 0.0)."""
-        missing = 0
+        file"). Retourne la liste des id de MESURE (un par mesure sans
+        correspondance dans le .prmag, PAS dedupliquee - un id peut
+        apparaitre deux fois si Re et Im sont tous deux sans specimen -
+        `len(...)` reste donc le meme compte "N measurement(s)" qu'avant)
+        dont l'orientation reste a 0.0 - demande explicite utilisateur
+        ("can you list the specimens without information") : chaque
+        appelant n'affichait jusqu'ici qu'un compte, pas les id concernes
+        (voir _format_missing_prmag_warning pour l'affichage, deduplique
+        celui-la)."""
+        missing_ids = []
         for m in self.donnees:
             spec = self.prmag_specimens.get(m.id)
             if spec is None:
-                missing += 1
+                missing_ids.append(m.id)
                 continue
             m.cin, m.caz, m.dip, m.str_ = spec.cin, spec.caz, spec.dip, spec.str_
-        return missing
+        return missing_ids
+
+    def _format_missing_prmag_warning(self, missing_ids):
+        """Formate l'avertissement "N measurement(s) have no matching
+        specimen in the .prmag file", en listant les id CONCERNES
+        (deduplique pour l'affichage - le compte N, lui, reste celui de
+        `missing_ids` tel quel, une entree par MESURE) - plafonne a 20 id
+        affiches ("..." au-dela) - factorise entre les 3 appelants de
+        _join_prmag_orientation."""
+        unique_ids = list(dict.fromkeys(missing_ids))
+        shown = ", ".join(unique_ids[:20])
+        more = ", ..." if len(unique_ids) > 20 else ""
+        return (
+            f"warning: {len(missing_ids)} measurement(s) have no matching specimen in the "
+            f".prmag file - their orientation (cin/caz/dip/str) stays at 0.0: {shown}{more}\n")
 
     def ouvrir_ani_dialog(self):
         """Equivalent de `openani` (lect_asc.f:592-676) - ouvre un fichier
@@ -434,9 +486,7 @@ class AmsApp:
                 self._afficher(f"companion prmag file found: {prmag_candidate}\n"
                                 f"nb specimens in prmag file: {len(self.prmag_specimens)}\n")
                 if missing:
-                    self._afficher(
-                        f"warning: {missing} measurement(s) have no matching specimen in the "
-                        f".prmag file - their orientation (cin/caz/dip/str) stays at 0.0.\n")
+                    self._afficher(self._format_missing_prmag_warning(missing))
             else:
                 self._afficher(
                     "note: orientation (cin/caz/dip/str) is not stored in .pmagani anymore, and "
@@ -472,7 +522,7 @@ class AmsApp:
             self.donnees = read_ani_file(candidate)
             self.ani_path = candidate
             self.selection = []
-            missing = 0
+            missing = []
             if is_pmagani:
                 # cin/caz/dip/str_ ne sont plus dans le .pmagani lui-meme
                 # ("the codes cin caz dip str are now not needed if the
@@ -483,9 +533,7 @@ class AmsApp:
             self._afficher(f"companion file found: {candidate}\n"
                             f"nb measurements in file: {len(self.donnees)}\n")
             if missing:
-                self._afficher(
-                    f"warning: {missing} measurement(s) have no matching specimen in the "
-                    f".prmag file - their orientation (cin/caz/dip/str) stays at 0.0.\n")
+                self._afficher(self._format_missing_prmag_warning(missing))
         else:
             self._afficher(f"no companion .pmagani/.ANI file found ({candidate}) - "
                             f"open one manually with 'Open File .pmagani...'.\n")
@@ -536,9 +584,7 @@ class AmsApp:
             missing = self._join_prmag_orientation()
             self._afficher(f"companion prmag file found: {prmag_candidate}\n")
             if missing:
-                self._afficher(
-                    f"warning: {missing} measurement(s) have no matching specimen in the "
-                    f".prmag file - their orientation (cin/caz/dip/str) stays at 0.0.\n")
+                self._afficher(self._format_missing_prmag_warning(missing))
 
     def ouvrir_convert_asc_dialog(self):
         """Convertit un fichier .asc AGICO (rapport texte du kappabridge,
@@ -785,6 +831,64 @@ class AmsApp:
                     f"specimen/site prefix ({shown}{more}).\n")
         self._afficher(msg)
 
+    def ouvrir_marquer_export_dialog(self):
+        """Marque, dans le .pmagani couramment ouvert, la colonne "export"
+        (voir ams_selection.mark_pmagani_export) : export=Y pour tout
+        specimen present dans self.selection et toute moyenne presente
+        dans self.mean_results, export=N pour TOUTE AUTRE ligne du meme
+        fichier - demande explicite utilisateur ("is it possible to
+        export from AMS_py only the data and mean tensors that we want
+        to export and only these selected data will be taken into
+        account in the main export from Starpaleomag"). self.selection/
+        self.mean_results sont construits normalement (Select measurements/
+        Tensorial mean/Select results) AVANT d'appeler ce menu - c'est cet
+        ensemble courant qui devient le nouvel ensemble exporte, pas un
+        ajout au precedent ("replace" et non "append", pour que ce menu
+        reste rejouable a volonte sans devoir d'abord "deselectionner").
+        STARpaleomag_Py lit ensuite cette meme colonne pour ignorer les
+        lignes export=N lors de son propre "Export to Magic"."""
+        if not self.ani_path or not os.path.isfile(self.ani_path):
+            self._showwarning("No file", "Open a .pmagani file first.")
+            return
+        if not self.selection and not self.mean_results:
+            self._showwarning(
+                "Nothing selected",
+                "Select measurements and/or compute mean results first - "
+                "the current selection becomes the export set.")
+            return
+
+        selected_ids = {m.id.strip().upper() for m in self.selection if m.id}
+
+        selected_mean_keys = set()
+        skipped = []
+        if self.mean_results:
+            code_s = self._console_input(
+                "Tensor type for all these means (A0=ATRM, F0=AARM, N0=AMS): ", "N0")
+            if code_s is None:
+                return
+            default_code2 = code_s.strip().upper() or "N0"
+            for orientation, res in self.mean_results:
+                site = mean_result_site(res.id)
+                if site is None:
+                    skipped.append(res.id or "(no id)")
+                    continue
+                code2 = (res.source_code2 or default_code2).strip().upper()
+                tilt_code = _ORIENT_TO_FILE_CODE.get(orientation, "")
+                selected_mean_keys.add((site.upper(), code2, tilt_code))
+
+        n_spec_in, n_spec_out, n_mean_in, n_mean_out = mark_pmagani_export(
+            self.ani_path, selected_ids, selected_mean_keys)
+
+        msg = (f"Export selection marked in {self.ani_path}\n"
+               f"Specimens: {n_spec_in} kept (export=Y), {n_spec_out} excluded (export=N)\n"
+               f"Means: {n_mean_in} kept (export=Y), {n_mean_out} excluded (export=N)\n")
+        if skipped:
+            shown = ", ".join(skipped[:10])
+            more = "..." if len(skipped) > 10 else ""
+            msg += (f"Skipped {len(skipped)} mean result(s) that mix more than one "
+                    f"specimen/site prefix ({shown}{more}).\n")
+        self._afficher(msg)
+
     # ------------------------------------------------------------------
     # AMS data
     # ------------------------------------------------------------------
@@ -850,7 +954,12 @@ class AmsApp:
         self._afficher("----\ndata list empty\n----\n")
 
     def supprimer_lignes(self):
-        """Equivalent de `delmes` (lect_asc.f:563-590)."""
+        """Equivalent de `delmes` (lect_asc.f:563-590), UN SEUL numero a la
+        fois a l'origine - etendu a une liste d'indices ("1,3,5-7", meme
+        syntaxe que STARpaleomag_Py.ouvrir_delete_results_dialog) pour
+        retirer plusieurs mesures en un seul passage - demande explicite
+        utilisateur ("to delete measurements, perhaps best to uses the
+        specimen numbers as in STARpaleomag_Py")."""
         if not self.selection:
             self._showwarning("No selection", "Select measurements first.")
             return
@@ -861,16 +970,38 @@ class AmsApp:
             if i % 3 == 0:
                 buf.write("\n")
         self._afficher(buf.getvalue())
-        line_s = self._console_input("which line to be removed :? ", "")
-        if line_s is None:
+        indices_s = self._console_input(
+            "Indices to delete (e.g. 1,3,5-7 - see the numbers above; "
+            "Escape to cancel): ", "")
+        if indices_s is None:
             return
+        indices_s = indices_s.strip()
+        if not indices_s:
+            return
+
+        to_delete = set()
         try:
-            i = int(line_s)
+            for token in indices_s.split(","):
+                token = token.strip()
+                if not token:
+                    continue
+                if "-" in token:
+                    a, b = token.split("-", 1)
+                    to_delete.update(range(int(a), int(b) + 1))
+                else:
+                    to_delete.add(int(token))
         except ValueError:
-            self._showerror("Error", "Must be an integer.")
+            self._showerror("Error", "Invalid index list (use e.g. 1,3,5-7).")
             return
-        if 1 <= i <= len(self.selection):
-            del self.selection[i - 1]
+
+        n = len(self.selection)
+        invalid = sorted(i for i in to_delete if i < 1 or i > n)
+        if invalid:
+            self._showerror("Error", f"Index out of range: {invalid} (1-{n}).")
+            return
+
+        self.selection = [m for i, m in enumerate(self.selection, start=1) if i not in to_delete]
+        self._afficher(f"{len(to_delete)} measurement(s) removed - {len(self.selection)} remaining.\n")
         self.lister_mesures()
 
     def changer_orientation(self):
@@ -906,7 +1037,19 @@ class AmsApp:
             if not entries:
                 return
             self.fig.set_size_inches(5.5, 9.5, forward=True)
-            build_anisotropy_parameters_figure(entries, fig=self.fig)
+            build_anisotropy_parameters_figure(
+                entries, fig=self.fig,
+                max_scale_top=self._aniso_scale_top, max_scale_bottom=self._aniso_scale_bottom)
+        elif self._current_graphic == "susc_aniso":
+            if not self.selection:
+                return
+            self.fig.set_size_inches(5.5, 9.5, forward=True)
+            build_susceptibility_anisotropy_figure(self.selection, orientation, fig=self.fig)
+        elif self._current_graphic == "im_re_susc":
+            if not self.selection:
+                return
+            self.fig.set_size_inches(7.0, 5.5, forward=True)
+            build_im_re_susceptibility_figure(self.selection, fig=self.fig)
         elif self._current_graphic == "bootstrap":
             if self._last_bootstrap is None:
                 return
@@ -918,6 +1061,76 @@ class AmsApp:
         else:
             return
         self._redraw_canvas()
+
+    def _on_plot_pick(self, event):
+        """Gestionnaire unique de clic-sur-artiste (pick_event) pour le
+        graphique "Anisotropy parameters" - voir ams_xy._register_point_
+        pick/_register_xaxis_pick pour ce qui est enregistre et pourquoi
+        (meme mecanisme que STARpaleomag_Py app._on_plot_pick/xygraph.
+        _pick_points). `event.ind` : toujours un seul point par artiste
+        pour "aniso_specimen" (un scatter par point), d'ou l'usage de
+        `event.ind[0]` - absent pour "aniso_xaxis" (l'artiste est l'axe
+        lui-meme, pas un scatter). Le panneau (haut/bas) est identifie
+        par la POSITION de l'Axes dans la figure (`self.fig.axes[0]` =
+        add_subplot(211) = haut), pas par son contenu (Flinn ou P'/T-Im
+        selon le cas - voir ams_xy.build_anisotropy_parameters_figure) :
+        chaque panneau garde ainsi sa PROPRE echelle, correction demande
+        explicite utilisateur ("the scale should not apply to both plots
+        (Re et Im) as they have very different ranges")."""
+        artist = event.artist
+        kind = getattr(artist, "_ams_pick_kind", None)
+        if kind == "aniso_specimen":
+            data = getattr(artist, "_ams_pick_data", None)
+            if data is not None and len(event.ind) > 0:
+                self._afficher(f"[Anisotropy parameters] {data}\n")
+        elif kind == "aniso_xaxis":
+            is_top = artist.axes is self.fig.axes[0] if self.fig.axes else True
+            self._prompt_single_aniso_scale("top" if is_top else "bottom")
+
+    def _prompt_single_aniso_scale(
+        self, panel: str, refresh: bool = True, reset_default: bool = False,
+    ) -> bool:
+        """Invite pour changer la borne haute d'echelle (F/L ou P') d'UN
+        SEUL panneau ("top"/"bottom") de "Anisotropy parameters" - appelee
+        soit deux fois de suite a l'ouverture du graphique (voir
+        afficher_anisotropy_parameters, `refresh=False` : c'est l'appelant
+        qui redessine une fois les deux valeurs saisies), soit une seule
+        fois depuis un clic sur l'axe X d'un panneau (`refresh=True`,
+        demande explicite utilisateur "is it possible to click on the X
+        axis to change the max value"). Retourne False si l'utilisateur
+        annule (Escape) ou entre une valeur invalide - l'appelant ne doit
+        alors pas continuer.
+
+        `reset_default` (utilise par afficher_anisotropy_parameters) :
+        n'affiche PAS la valeur precedente comme suggestion, meme si elle
+        est encore memorisee - demande explicite utilisateur ("une fois
+        que le choix de l'echelle a ete fait, il n'est pas remis a zero,
+        contrairement a la question donnees(0) resultats(1) d+r(2)") :
+        cette derniere propose TOUJOURS "0" par defaut a l'ouverture,
+        jamais le dernier choix - l'echelle doit se comporter pareil a
+        l'ouverture du graphique. Un clic sur l'axe X (refresh=True), en
+        revanche, ajuste une valeur EXISTANTE : y montrer le dernier
+        choix comme suggestion reste logique et n'est pas concerne."""
+        attr = "_aniso_scale_top" if panel == "top" else "_aniso_scale_bottom"
+        current = None if reset_default else getattr(self, attr)
+        scale_default = "" if current is None else f"{current:g}"
+        scale_s = self._console_input(
+            f"Max scale for {panel} panel (P>{P_OUTLIER_THRESHOLD:g} always excluded as outliers, "
+            "empty = auto) : ", scale_default)
+        if scale_s is None:
+            return False
+        scale_s = scale_s.strip()
+        if not scale_s:
+            setattr(self, attr, None)
+        else:
+            try:
+                setattr(self, attr, float(scale_s))
+            except ValueError:
+                self._showerror("Error", "Scale must be a number.")
+                return False
+        if refresh:
+            self._refresh_current_graphic()
+        return True
 
     def _redraw_canvas(self):
         """Port de STARpaleomag_Py/app._redraw_canvas - MEME probleme rencontre
@@ -1063,7 +1276,52 @@ class AmsApp:
             self._aniso_source = 0
         if self._aniso_source not in (0, 1, 2):
             self._aniso_source = 0
+        if not self._prompt_single_aniso_scale("top", refresh=False, reset_default=True):
+            return
+        if not self._prompt_single_aniso_scale("bottom", refresh=False, reset_default=True):
+            return
         self._current_graphic = "aniso_params"
+        self._refresh_current_graphic()
+
+    def afficher_susceptibility_anisotropy(self):
+        """Nouveau graphique (pas de source Fortran - demande explicite
+        utilisateur "can we built a plot with two graphs of susceptibility
+        on X and anisotropy degree on Y, above the Im and below the RE")
+        - voir ams_xy.build_susceptibility_anisotropy_figure. Un point
+        par mesure BRUTE de self.selection (pas de choix "donnees/
+        resultats" : un tenseur moyen n'a pas de susceptibilite bulk
+        individuelle comparable). Panneau du bas (Real) : susceptibilite
+        en echelle log normale, min a gauche et max a droite ("from min
+        to max"). Panneau du haut (Imaginary) :
+        |susceptibilite negative| en echelle log, axe INVERSE - grandeur
+        croissante VERS LA GAUCHE (demande explicite utilisateur "for the
+        negative K, plotting with the scale increasing to the left").
+        Y = P' (degre d'anisotropie corrige de Jelinek, meme convention
+        que le panneau P'/T de "Anisotropy parameters")."""
+        if not self.selection:
+            self._showwarning("No data", "Select measurements first.")
+            return
+        self._current_graphic = "susc_aniso"
+        self._refresh_current_graphic()
+
+    def afficher_im_re_susceptibility(self):
+        """Nouveau graphique (pas de source Fortran - demande explicite
+        utilisateur "a final plot with the Im susceptibility on X and the
+        Re susceptibility on Y same conventions as above for Kim + and
+        -") - voir ams_xy.build_im_re_susceptibility_figure. Un point par
+        SPECIMEN de self.selection ayant a la fois une mesure Real et une
+        mesure Imaginary (susceptibilite scalaire, independante de
+        l'orientation - pas de prompt d'orientation ici). Memes
+        conventions que "Susceptibility / anisotropy degree" pour le
+        cote Im : K negatif a gauche (|susceptibilite| en log, axe
+        inverse), K positif a droite (susceptibilite en log, axe normal),
+        echelles X independantes, ligne verticale a leur jonction - Y
+        (susceptibilite Real) egalement en log, partagee entre les deux
+        moities."""
+        if not self.selection:
+            self._showwarning("No data", "Select measurements first.")
+            return
+        self._current_graphic = "im_re_susc"
         self._refresh_current_graphic()
 
     def ouvrir_stereo_sample_dialog(self):
@@ -1108,12 +1366,75 @@ class AmsApp:
             entries = shape_entries_from_measurements(group, orientation)
             self.fig.clear()
             self.fig.set_size_inches(5.5, 9.5, forward=True)
-            build_anisotropy_parameters_figure(entries, fig=self.fig)
+            build_anisotropy_parameters_figure(
+                entries, fig=self.fig,
+                max_scale_top=self._aniso_scale_top, max_scale_bottom=self._aniso_scale_bottom)
             self._redraw_canvas()
 
             if idx == len(groups) - 1:
                 break
             choice = self._console_input(f"[{specimen_id}] next sample: return or (q)uit: ", "")
+            if choice is None or choice.strip().lower() == "q":
+                break
+
+    def ouvrir_stereo_site_dialog(self):
+        """Meme parcours que `ouvrir_stereo_sample_dialog` ("Stereographic
+        sample"), mais regroupe self.selection SITE PAR SITE au lieu de
+        specimen par specimen - demande explicite utilisateur ("est ce
+        possible d'ajouter l'option stereo sites pour une visualisation
+        rapide des donnees par site, suivant l'idee de stereo sample").
+        Site = les 6 premiers caracteres de l'id (annee(2)+site(4)) -
+        meme convention que `ams_selection.mean_result_site`/
+        STARpaleomag_Py field_notes.py (ex. "24WH0103A"/"24WH0104B" ->
+        site "24WH01"), regroupement par PREFIXE CONSECUTIF (comme le
+        regroupement par id de la version specimen). Un site typique
+        contenant plusieurs specimens (chacun potentiellement Re+Im),
+        le stereogramme et le Flinn/P'-T affiches par site font
+        naturellement basculer ce dernier sur la disposition P'-Im/P'-Re
+        separee des que le site melange les deux (voir ams_xy.
+        build_anisotropy_parameters_figure) - utile precisement pour ce
+        genre de coup d'oeil rapide multi-specimens."""
+        if not self.selection:
+            self._showwarning("No data", "Select measurements first.")
+            return
+        groups = []
+        for m in self.selection:
+            site = m.id[:6]
+            if groups and groups[-1][0] == site:
+                groups[-1][1].append(m)
+            else:
+                groups.append((site, [m]))
+
+        self.text_area.insert(tk.END, "\n--- Stereographic site (Escape to cancel) ---\n", "prompt")
+        orientation = self.orientation.get()
+        self._current_graphic = None  # ce parcours dessine lui-meme, sans passer par _refresh_current_graphic
+        for idx, (site, group) in enumerate(groups):
+            self._afficher(
+                f"--- {site} ({idx + 1}/{len(groups)}, {len(group)} measurement(s)) ---\n"
+                + format_measurement_list(group, orientation)
+            )
+            self.fig.clear()
+            self.fig.set_size_inches(5.5, 5.5, forward=True)
+            build_stereo_figure(
+                group, orientation=orientation, invert_negative=self.invert_negative,
+                ams_iproj=self.ams_iproj, fig=self.fig)
+            self._redraw_canvas()
+
+            choice = self._console_input(f"[{site}] return for T-Pprim (Escape to stop): ", "")
+            if choice is None:
+                return
+
+            entries = shape_entries_from_measurements(group, orientation)
+            self.fig.clear()
+            self.fig.set_size_inches(5.5, 9.5, forward=True)
+            build_anisotropy_parameters_figure(
+                entries, fig=self.fig,
+                max_scale_top=self._aniso_scale_top, max_scale_bottom=self._aniso_scale_bottom)
+            self._redraw_canvas()
+
+            if idx == len(groups) - 1:
+                break
+            choice = self._console_input(f"[{site}] next site: return or (q)uit: ", "")
             if choice is None or choice.strip().lower() == "q":
                 break
 
@@ -1213,7 +1534,52 @@ class AmsApp:
         formule a formule depuis le source, mais sans jeu de donnees reel
         complet (mêmes specimens + orientation exacte) pour comparaison
         octet-pres. A traiter avec prudence pour les angles de confiance
-        tant qu'un cas reel verifiable n'est pas disponible."""
+        tant qu'un cas reel verifiable n'est pas disponible.
+
+        Reel/Imaginaire separes (demande explicite utilisateur - "pour le
+        calcul des tenseurs moyens, il vaut mieux separer Re et Im car
+        les degres d'anisotropie sont tres differents, quand les deux
+        sont selectionnes, calculer 2 tenseurs") : si `self.selection`
+        melange au moins une mesure reelle et une imaginaire (voir
+        `is_imaginary_component`), DEUX moyennes tensorielles sont
+        calculees separement (Imaginary puis Real) plutot qu'une seule
+        moyenne melangeant des degres d'anisotropie incomparables -
+        chacune gardee en memoire independamment sur confirmation. Une
+        selection homogene (tout Re, tout Im) garde le comportement a
+        un seul tenseur, inchange.
+
+        Correction kmax/kmin des tenseurs a susceptibilite negative
+        AVANT moyenne (demande explicite utilisateur - "les tenseurs
+        moyens de Im negatifs ont aussi le kmax et le kmin intervertis.
+        Comment faire une moyenne pour un site avec une partie des
+        echantillons avec des Kim negatifs et d'autres positifs") : voir
+        `ams_stats.negative_k_corrected_tensor`, applique ici a chaque
+        mesure ou `m.s<0` (tenseur entier deja retourne par Agico) avant
+        de le donner a `tsmean` - necessaire des qu'un groupe mele des
+        specimens negatifs et positifs (leur "grande valeur propre" ne
+        represente pas le meme axe physique), pas seulement pour
+        l'affichage individuel (`ams_stats.principal_axes`, qui ne fait
+        que relabeliser APRES coup, insuffisant pour une moyenne).
+
+        Outliers (P=k1/k3 > `ams_xy.P_OUTLIER_THRESHOLD`, ou indefini -
+        voir `ams_stats.shape_params`) EXCLUS de la moyenne, PAS
+        seulement des graphiques (demande explicite utilisateur - "in
+        the mean tensor, the direction and ellipses are OK but the
+        anisotropy degree just explose to irrealistic values" sur un
+        site reel, 24WH36) : un seul specimen dont la partie imaginaire
+        est dominee par le bruit (susceptibilite quasi-nulle, degre
+        d'anisotropie individuel deja demesure - confirme jusque dans le
+        propre calcul d'Agico sur le fichier .asc d'origine, PAS un bug
+        d'analyse) suffit a faire tendre un axe de la moyenne vers zero,
+        avec `normalize=True` (division par la trace propre de CE
+        specimen, deja quasi-nulle) OU MEME sans normaliser (l'axe
+        moyen lui-meme peut s'annuler par pure annulation directionnelle
+        entre specimens faibles) - un ratio dont le denominateur est
+        quasi-nul explose quelle que soit la normalisation choisie.
+        Exclure ces specimens AVANT le calcul (verifie sur 24WH36 : P'
+        chute de ~295-900 a 2.5, une valeur physiquement plausible) est
+        la seule correction qui traite la cause reelle plutot que le
+        symptome."""
         if len(self.selection) <= 2:
             self._showwarning(
                 "Not enough data", "Tensorial mean needs at least 3 measurements (il>2, like the Fortran).")
@@ -1230,29 +1596,69 @@ class AmsApp:
             return
         normalize = not norm_s.strip().lower().startswith("n")
 
-        tensors = []
-        for m in self.selection:
-            a = apply_orientation(m, orientation)
-            tensors.append((a[0, 0], a[1, 1], a[2, 2], a[0, 1], a[1, 2], a[0, 2]))
-        res = tsmean(tensors, normalize=normalize)
-        if res is None:
-            self._showwarning("No result", "Mean tensor is isotropic or not enough valid tensors.")
-            return
-        # equivalent de `storeres` (anisotropie.f:2989-3049) :
-        # id = 6 premiers caracteres du 1er specimen + 6 premiers du dernier
-        res.id = self.selection[0].id[:6] + self.selection[-1].id[:6]
-        if res.ellipsoid_type == 0:
-            self._afficher("Tenseur moyen isotrope - pas de statistiques d'axes.\n")
-            return
+        im_group = [m for m in self.selection if is_imaginary_component(m)]
+        re_group = [m for m in self.selection if not is_imaginary_component(m)]
+        if im_group and re_group:
+            groups = [("Imaginary", im_group), ("Real", re_group)]
+            self._afficher(
+                "Selection mixes Real and Imaginary tensors (very different anisotropy "
+                "degrees) - computing 2 separate mean tensors.\n")
+        else:
+            groups = [(None, self.selection)]
 
-        self._afficher(format_tsmean_box(res, orientation))
+        for label, group in groups:
+            prefix = f"[{label}] " if label else ""
+            filtered = []
+            n_outliers = 0
+            for m in group:
+                axes = principal_axes(m, orientation)
+                p = shape_params(axes[0][0], axes[1][0], axes[2][0])["P"]
+                if math.isnan(p) or p > P_OUTLIER_THRESHOLD:
+                    n_outliers += 1
+                    continue
+                filtered.append(m)
+            if n_outliers:
+                self._afficher(
+                    f"{prefix}{n_outliers} outlier(s) excluded (P>{P_OUTLIER_THRESHOLD:g} or "
+                    "undefined) before averaging.\n")
+            if len(filtered) <= 2:
+                self._afficher(
+                    f"{prefix}skipped: needs at least 3 valid measurements (has {len(filtered)}).\n")
+                continue
+            tensors = []
+            for m in filtered:
+                a = apply_orientation(m, orientation)
+                if m.s < 0.0:
+                    a = negative_k_corrected_tensor(a)
+                tensors.append((a[0, 0], a[1, 1], a[2, 2], a[0, 1], a[1, 2], a[0, 2]))
+            res = tsmean(tensors, normalize=normalize)
+            if res is None:
+                if label is None:
+                    self._showwarning("No result", "Mean tensor is isotropic or not enough valid tensors.")
+                else:
+                    self._afficher(f"{prefix}mean tensor is isotropic or not enough valid tensors - skipped.\n")
+                continue
+            # equivalent de `storeres` (anisotropie.f:2989-3049) :
+            # id = 6 premiers caracteres du 1er specimen + 6 premiers du dernier
+            res.id = filtered[0].id[:6] + filtered[-1].id[:6]
+            if all(is_imaginary_component(m) for m in filtered):
+                res.source_code2 = "IM"
+            elif not any(is_imaginary_component(m) for m in filtered):
+                res.source_code2 = "RE"
+            if res.ellipsoid_type == 0:
+                self._afficher(f"{prefix}Tenseur moyen isotrope - pas de statistiques d'axes.\n")
+                continue
 
-        keep_s = self._console_input("Would you like to keep this result in memory ?(Y/n): ", "Y")
-        if keep_s is None:
-            return
-        if not keep_s.strip().lower().startswith("n"):
-            self.mean_results.append((orientation, res))
-            self._afficher(f"({len(self.mean_results)} mean result(s) kept in memory.)\n")
+            header = f"--- {label} ---\n" if label else ""
+            self._afficher(header + format_tsmean_box(res, orientation))
+
+            keep_s = self._console_input(
+                f"Would you like to keep this {prefix}result in memory ?(Y/n): ", "Y")
+            if keep_s is None:
+                return
+            if not keep_s.strip().lower().startswith("n"):
+                self.mean_results.append((orientation, res))
+                self._afficher(f"({len(self.mean_results)} mean result(s) kept in memory.)\n")
 
     def _format_mean_result_entry(self, index, orientation, res, code2=None):
         """Formate UNE entree de self.mean_results (ou lue depuis un
@@ -1303,17 +1709,28 @@ class AmsApp:
         resultat dont l'id ne se resout pas a un site unique (voir
         ams_selection.mean_result_site) ou qui est isotrope (pas d'axes
         propres, voir ams_selection._format_pmagani_mean_line) est ECARTE
-        et journalise plutot qu'exporte sous un nom devine."""
+        et journalise plutot qu'exporte sous un nom devine.
+
+        `res.source_code2` ("RE"/"IM", voir ouvrir_tsmean_dialog qui
+        separe deja Re/Im) FORCE le code2 ecrit pour CE resultat, sans
+        redemander - demande explicite utilisateur ("force the code to
+        Re and Im when saving the results in the file") : le prompt
+        "Tensor type" n'est pose que s'il reste au moins un resultat SANS
+        source_code2 connu (charge d'ailleurs, ou calcule par un chemin
+        plus ancien), et ne s'applique alors qu'a ceux-la."""
         if not results:
             return
         path = self._current_pmagani_path()
         if path is None:
             return
-        code_s = self._console_input(
-            "Tensor type for all these means (A0=ATRM, F0=AARM, N0=AMS): ", "N0")
-        if code_s is None:
-            return
-        code2 = code_s.strip().upper() or "N0"
+        code2 = None
+        if any(res.source_code2 is None for _o, res in results):
+            code_s = self._console_input(
+                "Tensor type for the remaining mean(s) without a known Re/Im source "
+                "(A0=ATRM, F0=AARM, N0=AMS): ", "N0")
+            if code_s is None:
+                return
+            code2 = code_s.strip().upper() or "N0"
         written, skipped = 0, []
         for orientation, res in results:
             site = mean_result_site(res.id)
@@ -1321,7 +1738,8 @@ class AmsApp:
                 skipped.append(f"{res.id or '(no id)'} (mixes more than one site)")
                 continue
             try:
-                write_ani_mean_result(path, site, code2, res, orientation, info=source_label)
+                write_ani_mean_result(
+                    path, site, res.source_code2 or code2, res, orientation, info=source_label)
             except ValueError:
                 skipped.append(f"{res.id} (isotropic)")
                 continue

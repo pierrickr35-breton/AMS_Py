@@ -57,6 +57,34 @@ class AMSMeasurement:
     # d'anisotropie ne se fait pas si le message satisfactory or not
     # n'est pas dans le fichier pmagani").
     quality: Optional[str] = None
+    # "Y"/"N" - inclus dans l'export MagIC ou non, colonne .pmagani
+    # DEDIEE (meme convention que calcul.AniTensor.export cote
+    # STARpaleomag_Py, MEME fichier partage) - demande explicite
+    # utilisateur ("is it possible to export from AMS_py only the data
+    # and mean tensors that we want to export and only these selected
+    # data will be taken into account in the main export from
+    # Starpaleomag") : "Y" par defaut (tout exporte, comme avant cette
+    # fonctionnalite - voir ouvrir_marquer_export_dialog, qui est la
+    # SEULE facon de mettre "N" sur une ligne) pour qu'un fichier jamais
+    # touche par cette fonctionnalite continue de tout exporter sans
+    # rien changer a son comportement actuel.
+    export: str = "Y"
+
+
+def is_imaginary_component(m: AMSMeasurement) -> bool:
+    """True si `m` vient du canal imaginaire (KLY5 AC susceptibility -
+    voir ams_asc.py, `component_note`) plutot que du canal reel/standard.
+    Detecte via `info`, PAS `code2` seul : un tenseur negatif ecrase
+    toujours `code2` en "I-" que le composant d'origine soit reel ou
+    imaginaire (ams_asc.py:227-229 - dans les faits jamais observe pour
+    un Re reel, mais le champ ne le garantit pas) ; `info` porte lui la
+    distinction "real component"/"imaginary component" AVANT cet
+    ecrasement, donc reste fiable dans tous les cas. Utilise par
+    ams_stereo/ams_xy pour styliser les points Im differemment des Re
+    (fill gris + stroke colore) - demande explicite utilisateur ("dans
+    les plots ... mettre les tenseurs d'Im avec un fill en gris et le
+    stroke color rouge vert bleu ... pour differencier les Re des Im")."""
+    return "imaginary component" in (m.info or "")
 
 
 def cart(r: float, d: float, ai: float) -> Tuple[float, float, float]:
@@ -174,8 +202,11 @@ def apply_orientation(m: AMSMeasurement, orientation: int) -> np.ndarray:
 _PMAGANI_HEADER = [
     "specimen", "code2", "etape",
     "k11", "k22", "k33", "k12", "k23", "k13", "s(SI*1e-5)",
-    "n_positions", "sigma", "ftest", "ftest12", "ftest23", "quality", "info",
+    "n_positions", "sigma", "ftest", "ftest12", "ftest23", "quality", "export", "info",
 ]
+# nombre de colonnes d'un fichier ecrit AVANT l'ajout de "export" (voir
+# AMSMeasurement.export) - meme principe que _PMAGANI_MEAN_HEADER_LEGACY_LEN.
+_PMAGANI_HEADER_LEGACY_LEN = len(_PMAGANI_HEADER) - 1
 
 # `s` en SI*1e-5 (ex. 7261 = 0.07261 SI) - convention Bartington ("since
 # the 80s ... measure in 1e-5 SI assuming a volume of 10cc ... could read
@@ -201,16 +232,27 @@ _PMAGANI_MEAN_HEADER = [
     "dec1", "inc1", "dec2", "inc2", "dec3", "inc3",
     "alpha1_1", "alpha2_1", "alpha1_2", "alpha2_2", "alpha1_3", "alpha2_3",
     "P", "T", "L", "F", "Pprim",
-    "info",
+    "tilt_correction", "export", "info",
 ]
+# nombre de colonnes d'un fichier ecrit AVANT l'ajout de la colonne
+# dediee "tilt_correction" (le plus ancien format - ni tilt_correction
+# ni export) - voir _read_pmagani_mean_rows.
+_PMAGANI_MEAN_HEADER_LEGACY_LEN = len(_PMAGANI_MEAN_HEADER) - 2
+# nombre de colonnes d'un fichier avec tilt_correction mais ecrit AVANT
+# l'ajout de "export" (TensorialMeanResult.export) - demande explicite
+# utilisateur ("is it possible to export from AMS_py only the data and
+# mean tensors that we want to export").
+_PMAGANI_MEAN_HEADER_NO_EXPORT_LEN = len(_PMAGANI_MEAN_HEADER) - 1
 
 # iorient (1/2/3, voir amsapp.orientation / radiobuttons "AMS data") <->
-# code stocke dans la colonne libre `info` de la ligne mean (le schema
-# _PMAGANI_MEAN_HEADER n'a pas de colonne orientation dediee - demande
-# utilisateur "both blocks having their own set of parameters" portait
-# sur specimen/site, pas sur l'ajout d'une colonne par cote AMS_Py ;
-# encoder ceci dans `info` evite de re-modifier le schema deja valide
-# cote STARpaleomag_Py/calcul).
+# colonne DEDIEE "tilt_correction" de la ligne mean - demande explicite
+# utilisateur ("oui ajouter une colonne avant info", suite a "in the
+# file pmagani, there is no information about the IS/TC" : l'info
+# existait, mais SEULEMENT en texte libre dans `info`, jamais une
+# colonne du tableau - une decision deliberee au depart ("encoder ceci
+# dans info evite de re-modifier le schema deja valide cote
+# STARpaleomag_Py/calcul") revenue ici). Fichiers plus anciens (colonne
+# absente, info seul porteur) restent lisibles - voir _mean_row_to_result.
 #
 # MEME convention que STARpaleomag_Py/calcul._ORIENT_MODE_TAG/_ORIENT_TO_FILE_CODE
 # (colonne "IS/TC" de .pmagres) - PAS un enum CE/IS/CP invente separement :
@@ -231,6 +273,32 @@ _FILE_CODE_TO_ORIENT = {"1": 1, "0": 2, "100": 3}
 
 def _fmt_pmagani_stat(v: Optional[float]) -> str:
     return "n.d" if v is None else f"{v:.6g}"
+
+
+def _format_pmagani_specimen_line(m: AMSMeasurement) -> str:
+    """Formate UNE ligne de la section specimen (voir _PMAGANI_HEADER) -
+    factorise entre les 3 ecrivains ad hoc qui dupliquaient chacun cette
+    liste de champs (ams_asc.import_asc_file, ams_selection.
+    import_legacy_ani, et ouvrir_marquer_export_dialog cote app.py qui
+    reecrit le fichier entier) - demande explicite utilisateur ("is it
+    possible to export from AMS_py only the data and mean tensors that
+    we want to export"), pour que la colonne "export" ajoutee ici soit
+    ecrite PARTOUT de la meme facon, sans re-dupliquer une 4e fois cette
+    liste de 18 champs."""
+    info = f'"{m.info}"' if m.info else '""'
+    fields = [
+        m.id, m.code2, str(m.etape),
+        f"{m.k11:.6E}", f"{m.k22:.6E}", f"{m.k33:.6E}",
+        f"{m.k12:.6E}", f"{m.k23:.6E}", f"{m.k13:.6E}",
+        f"{m.s:.5f}",
+        "n.d" if m.n_positions is None else str(m.n_positions),
+        _fmt_pmagani_stat(m.sigma), _fmt_pmagani_stat(m.ftest),
+        _fmt_pmagani_stat(m.ftest12), _fmt_pmagani_stat(m.ftest23),
+        m.quality or "n.d",
+        m.export or "Y",
+        info,
+    ]
+    return "\t".join(fields) + "\n"
 
 
 def _insert_pmagani_line(path: str, line: str, is_mean: bool) -> None:
@@ -277,9 +345,14 @@ def _format_pmagani_mean_line(
 ) -> str:
     """Formate UNE ligne de la section mean pour `result` (3 axes k1>=k2>=
     k3, deja tries - voir ams_stats.TensorialMeanResult). `orientation`
-    (1/2/3) encodee dans `info` comme un code de correction de pendage
-    0-100 (voir _ORIENT_TO_FILE_CODE, MEME convention que la colonne
-    "IS/TC" de STARpaleomag_Py/calcul .pmagres, pas une colonne dediee ici).
+    (1/2/3) ecrite dans la colonne DEDIEE "tilt_correction" (voir
+    _ORIENT_TO_FILE_CODE, MEME convention que la colonne "IS/TC" de
+    STARpaleomag_Py/calcul .pmagres) - PLUS dupliquee en texte dans
+    `info` (l'ancienne convention "tilt_correction: N; ..." restait la
+    SEULE source avant l'ajout de cette colonne - demande explicite
+    utilisateur "oui ajouter une colonne avant info" ; `info` redevient
+    un commentaire libre, plus jamais parse pour une valeur reelle sur
+    un fichier ecrit a partir d'ici).
     Leve ValueError si `result` est isotrope/sans axes (rien de pertinent
     a ecrire - voir ams_stats.format_tsmean_box, meme garde)."""
     from ams_stats import shape_params
@@ -288,9 +361,6 @@ def _format_pmagani_mean_line(
     k1, k2, k3 = (ax.eigenvalue for ax in result.axes)
     sp = shape_params(k1, k2, k3)
     tilt_code = _ORIENT_TO_FILE_CODE.get(orientation, "")
-    info_full = f"tilt_correction: {tilt_code}" if tilt_code else ""
-    if info:
-        info_full = f"{info_full}; {info}" if info_full else info
     fields = [
         site, code2, str(result.n),
         f"{k1:.6E}", f"{k2:.6E}", f"{k3:.6E}",
@@ -302,7 +372,9 @@ def _format_pmagani_mean_line(
         f"{result.axes[2].alpha[0]:.3f}", f"{result.axes[2].alpha[1]:.3f}",
         _fmt_pmagani_stat(sp["P"]), _fmt_pmagani_stat(sp["T"]),
         _fmt_pmagani_stat(sp["L"]), _fmt_pmagani_stat(sp["F"]), _fmt_pmagani_stat(sp["Pprim"]),
-        f'"{info_full}"' if info_full else '""',
+        tilt_code,
+        result.export or "Y",
+        f'"{info}"' if info else '""',
     ]
     return "\t".join(fields) + "\n"
 
@@ -339,7 +411,19 @@ def _read_pmagani_mean_rows(path: str) -> List[dict]:
             parts = line.split("\t")
             if not parts or parts[0] == "site":
                 continue  # ligne d'entete
-            if len(parts) < len(_PMAGANI_MEAN_HEADER):
+            # Retro-compatibilite sur le nombre de colonnes (meme
+            # principe que calcul._read_pmagani_mean_tensors, meme
+            # fichier partage) - 3 paliers : le plus ancien format (ni
+            # tilt_correction ni export, info en dernier), le format
+            # intermediaire (tilt_correction ajoute, PAS encore export),
+            # et le format actuel (tilt_correction + export avant info).
+            if len(parts) >= len(_PMAGANI_MEAN_HEADER):
+                tilt_correction, export_raw, info_raw = parts[23].strip(), parts[24].strip(), parts[25]
+            elif len(parts) >= _PMAGANI_MEAN_HEADER_NO_EXPORT_LEN:
+                tilt_correction, export_raw, info_raw = parts[23].strip(), "Y", parts[24]
+            elif len(parts) >= _PMAGANI_MEAN_HEADER_LEGACY_LEN:
+                tilt_correction, export_raw, info_raw = "", "Y", parts[23]
+            else:
                 continue
             try:
                 rows.append({
@@ -351,34 +435,75 @@ def _read_pmagani_mean_rows(path: str) -> List[dict]:
                     "alpha1_1": float(parts[12]), "alpha2_1": float(parts[13]),
                     "alpha1_2": float(parts[14]), "alpha2_2": float(parts[15]),
                     "alpha1_3": float(parts[16]), "alpha2_3": float(parts[17]),
-                    "info": parts[23].strip('"') if len(parts) > 23 else "",
+                    "tilt_correction": tilt_correction,
+                    "export": export_raw if export_raw in ("Y", "N") else "Y",
+                    "info": info_raw.strip('"'),
                 })
             except ValueError:
                 continue
     return rows
 
 
+def _restm_from_alpha(alpha1_deg: float, alpha2_deg: float) -> "np.ndarray":
+    """Reconstruit une `restm` (2x2, voir ams_stats.ellips/AxisResult)
+    depuis les seuls demi-angles alpha1(grand axe)/alpha2(petit axe) en
+    degres DEJA sauvegardes (.pmagani ne stocke pas `v`, l'orientation
+    propre 2x2 de l'ellipse dans son plan tangent) - demande explicite
+    utilisateur ("is it possible to... plot the ellipses") : sans ceci,
+    une moyenne RELUE depuis un .pmagani (par opposition a une moyenne
+    FRAICHEMENT calculee dans la meme session, ou `ellips()` peuple
+    `restm` directement) n'affiche jamais d'ellipse - draw_stereo_
+    confidence_ellipses saute silencieusement tout axe a `restm is
+    None`. Assume l'ellipse ALIGNEE sur les deux autres axes propres
+    (grand axe vers l'axe j, petit axe vers l'axe k) - PAS une
+    approximation nouvelle, c'est deja la simplification documentee et
+    appliquee ailleurs dans ce module pour eta/zeta (voir ams_stats.
+    magic_site_aniso_fields : "eta/zeta pointent vers les DEUX AUTRES
+    axes propres eux-memes, pas une orientation d'ellipse recalculee").
+    `ellips()` donne alpha=atan(sqrt(c*lambda)) et restm=v@diag(sqrt(c*
+    lambda))@v.T ; v=Identite ici donne restm=diag(tan(alpha1),
+    tan(alpha2)) - la vraie rotation `v` (si l'ellipse n'etait pas deja
+    axis-aligned dans le fichier d'origine) reste perdue, l'ellipse
+    redessinee est donc une approximation axis-aligned, pas un
+    round-trip exact."""
+    return np.diag([
+        math.tan(math.radians(alpha1_deg)),
+        math.tan(math.radians(alpha2_deg)),
+    ])
+
+
 def _mean_row_to_result(row: dict) -> Tuple[int, "TensorialMeanResult"]:
     """Convertit une ligne brute (voir _read_pmagani_mean_rows) en
     (orientation, TensorialMeanResult) - meme convention de tuple que
-    app.py:self.mean_results. `orientation` retrouvee dans `info` (code
-    de correction de pendage 0-100, voir _ORIENT_TO_FILE_CODE) si
-    presente, sinon 2 (in situ, code "0") par defaut."""
+    app.py:self.mean_results. `orientation` retrouvee en priorite dans
+    la colonne dediee `tilt_correction` ; a defaut (fichier ecrit avant
+    son ajout), repli sur le texte libre `info` (ancienne convention
+    "tilt_correction: N; ..."). 2 (in situ, code "0") si ni l'une ni
+    l'autre n'est exploitable."""
     import re
     from ams_stats import AxisResult, TensorialMeanResult
     orientation = 2
-    m = re.search(r"tilt_correction:\s*(1|0|100)\b", row.get("info", ""))
-    if m:
-        orientation = _FILE_CODE_TO_ORIENT.get(m.group(1), 2)
+    tilt_correction = (row.get("tilt_correction") or "").strip()
+    if tilt_correction in _FILE_CODE_TO_ORIENT:
+        orientation = _FILE_CODE_TO_ORIENT[tilt_correction]
+    else:
+        m = re.search(r"tilt_correction:\s*(1|0|100)\b", row.get("info", ""))
+        if m:
+            orientation = _FILE_CODE_TO_ORIENT.get(m.group(1), 2)
     axes = [
         AxisResult(eigenvalue=row["k1"], dec=row["dec1"], inc=row["inc1"],
-                   alpha=(row["alpha1_1"], row["alpha2_1"])),
+                   alpha=(row["alpha1_1"], row["alpha2_1"]),
+                   restm=_restm_from_alpha(row["alpha1_1"], row["alpha2_1"])),
         AxisResult(eigenvalue=row["k2"], dec=row["dec2"], inc=row["inc2"],
-                   alpha=(row["alpha1_2"], row["alpha2_2"])),
+                   alpha=(row["alpha1_2"], row["alpha2_2"]),
+                   restm=_restm_from_alpha(row["alpha1_2"], row["alpha2_2"])),
         AxisResult(eigenvalue=row["k3"], dec=row["dec3"], inc=row["inc3"],
-                   alpha=(row["alpha1_3"], row["alpha2_3"])),
+                   alpha=(row["alpha1_3"], row["alpha2_3"]),
+                   restm=_restm_from_alpha(row["alpha1_3"], row["alpha2_3"])),
     ]
-    result = TensorialMeanResult(n=row["n"], axes=axes, ellipsoid_type=1, id=row["site"])
+    result = TensorialMeanResult(
+        n=row["n"], axes=axes, ellipsoid_type=1, id=row["site"],
+        export=row.get("export", "Y"))
     return orientation, result
 
 
@@ -393,6 +518,119 @@ def read_ani_mean_results_from_pmagani(path: str) -> List[Tuple[int, "TensorialM
         orientation, result = _mean_row_to_result(row)
         out.append((orientation, result, row["code2"]))
     return out
+
+
+def mark_pmagani_export(
+    path: str, selected_specimen_ids: "set", selected_mean_keys: "set",
+) -> Tuple[int, int, int, int]:
+    """Reecrit .pmagani EN PLACE, colonne "export" UNIQUEMENT (Y pour les
+    lignes selectionnees, N pour toutes les AUTRES lignes du MEME
+    fichier) - demande explicite utilisateur ("is it possible to export
+    from AMS_py only the data and mean tensors that we want to export
+    and only these selected data will be taken into account in the main
+    export from Starpaleomag"). TOUTES les autres colonnes DEJA presentes
+    sur chaque ligne restent BYTE POUR BYTE identiques (edition directe
+    de la colonne "export" dans la liste `parts` deja tabulee, PAS un
+    reformatage complet depuis des objets reconstruits - evite tout
+    risque de deriver la precision/le format d'une colonne non
+    concernee, ex. P/T/L/F/Pprim qui ne sont meme pas conservees par
+    _read_pmagani_mean_rows).
+
+    `selected_specimen_ids` : ensemble d'id de specimen (MAJUSCULES) a
+    marquer export=Y - tout specimen DU FICHIER absent de cet ensemble
+    est marque export=N. `selected_mean_keys` : ensemble de
+    (site, code2, tilt_correction_code_fichier) en MAJUSCULES pour
+    site/code2 (voir _ORIENT_TO_FILE_CODE pour convertir une orientation
+    1/2/3 en code fichier "1"/"0"/"100"), meme principe pour le reste.
+
+    Une ligne "format ancien" (ecrite avant l'ajout de la colonne
+    "export" - et pour la section mean, potentiellement avant
+    "tilt_correction" aussi) n'a PAS ces colonnes du tout : elles sont
+    INSEREES (pas seulement editees) a la bonne position - premiere
+    reecriture reelle d'un vrai fichier utilisateur qui predate cette
+    fonctionnalite, sinon la colonne "export" ne serait JAMAIS visible
+    dans un tel fichier (le point mort observe : "export" absent meme
+    apres avoir lance "Mark selection for MagIC export..."). Une ligne
+    mean sans "tilt_correction" du tout n'a pas non plus de code fichier
+    connu pour la cle de correspondance - `tilt_correction_code_fichier`
+    vaut alors "" (ne correspondra qu'a une cle appelante elle-meme
+    construite avec un code "", ce qui n'arrive normalement jamais - une
+    telle ligne tres ancienne est donc marquee N faute de mieux). Les
+    lignes d'en-tete ("specimen ..."/"site ...") sont elles aussi mises a
+    niveau vers _PMAGANI_HEADER/_PMAGANI_MEAN_HEADER si necessaire (noms
+    de colonnes uniquement, aucune donnee). Une ligne encore plus courte
+    (format tres ancien, en dessous meme du palier legacy le plus bas) est
+    laissee TELLE QUELLE (ni touchee ni comptee) - reste lue "export=Y"
+    par defaut par les deux applications.
+
+    Retourne (specimens_inclus, specimens_exclus, moyennes_incluses,
+    moyennes_exclues)."""
+    with open(path, "r", encoding="utf-8", errors="replace") as f:
+        lines = f.read().splitlines()
+
+    in_mean = False
+    n_spec_in = n_spec_out = n_mean_in = n_mean_out = 0
+    out_lines = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            if stripped == _ANI_MEAN_HEADER:
+                in_mean = True
+            out_lines.append(line)
+            continue
+        if not stripped:
+            out_lines.append(line)
+            continue
+        parts = line.split("\t")
+        if not in_mean:
+            if not parts:
+                out_lines.append(line)
+                continue
+            if parts[0] == "specimen":
+                out_lines.append("\t".join(_PMAGANI_HEADER) if len(parts) < len(_PMAGANI_HEADER) else line)
+                continue
+            if len(parts) >= len(_PMAGANI_HEADER):
+                pass  # deja la colonne "export" en place, index 16
+            elif len(parts) >= _PMAGANI_HEADER_LEGACY_LEN:
+                parts = parts[:16] + [""] + parts[16:]  # insere "export" avant "info"
+            else:
+                out_lines.append(line)
+                continue
+            included = parts[0].strip().upper() in selected_specimen_ids
+            parts[16] = "Y" if included else "N"
+            if included:
+                n_spec_in += 1
+            else:
+                n_spec_out += 1
+            out_lines.append("\t".join(parts))
+        else:
+            if not parts:
+                out_lines.append(line)
+                continue
+            if parts[0] == "site":
+                out_lines.append("\t".join(_PMAGANI_MEAN_HEADER) if len(parts) < len(_PMAGANI_MEAN_HEADER) else line)
+                continue
+            if len(parts) >= len(_PMAGANI_MEAN_HEADER):
+                pass  # deja tilt_correction+export en place, index 23/24
+            elif len(parts) >= _PMAGANI_MEAN_HEADER_NO_EXPORT_LEN:
+                parts = parts[:24] + [""] + parts[24:]  # insere "export" avant "info"
+            elif len(parts) >= _PMAGANI_MEAN_HEADER_LEGACY_LEN:
+                parts = parts[:23] + ["", ""] + parts[23:]  # insere tilt_correction="" puis "export" avant "info"
+            else:
+                out_lines.append(line)
+                continue
+            key = (parts[0].strip().upper(), parts[1].strip().upper(), parts[23].strip())
+            included = key in selected_mean_keys
+            parts[24] = "Y" if included else "N"
+            if included:
+                n_mean_in += 1
+            else:
+                n_mean_out += 1
+            out_lines.append("\t".join(parts))
+
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        f.write("\n".join(out_lines) + "\n")
+    return n_spec_in, n_spec_out, n_mean_in, n_mean_out
 
 
 def _parse_pmagani_stat(v: str) -> Optional[float]:
@@ -453,8 +691,20 @@ def _read_pmagani_file(path: str) -> List[AMSMeasurement]:
             m.ftest23 = _parse_pmagani_stat(parts[14]) if len(parts) > 14 else None
             if len(parts) > 15 and parts[15].strip() in ("g", "b"):
                 m.quality = parts[15].strip()
-            if len(parts) > 16:
-                info = parts[16].strip()
+            # export/info : retro-compatibilite sur le nombre de colonnes
+            # (meme principe que _PMAGANI_MEAN_HEADER_LEGACY_LEN) - un
+            # fichier ecrit AVANT l'ajout de "export" a info en colonne
+            # 16 (_PMAGANI_HEADER_LEGACY_LEN colonnes) ; un fichier plus
+            # recent a "export" en 16 et info decale en 17.
+            if len(parts) >= len(_PMAGANI_HEADER):
+                export_raw, info_idx = parts[16].strip(), 17
+            elif len(parts) >= _PMAGANI_HEADER_LEGACY_LEN:
+                export_raw, info_idx = "Y", 16
+            else:
+                export_raw, info_idx = "Y", None
+            m.export = export_raw if export_raw in ("Y", "N") else "Y"
+            if info_idx is not None and len(parts) > info_idx:
+                info = parts[info_idx].strip()
                 if info.startswith('"') and info.endswith('"') and len(info) >= 2:
                     info = info[1:-1]
                 m.info = info
@@ -668,14 +918,7 @@ def import_legacy_ani(old_path: str, new_path: Optional[str] = None) -> str:
         out.write(_PMAGANI_UNITS_NOTE)
         out.write("\t".join(_PMAGANI_HEADER) + "\n")
         for m in measurements:
-            info = f'"{m.info}"' if m.info else '""'
-            fields = [
-                m.id, m.code2, str(m.etape),
-                f"{m.k11:.6E}", f"{m.k22:.6E}", f"{m.k33:.6E}",
-                f"{m.k12:.6E}", f"{m.k23:.6E}", f"{m.k13:.6E}",
-                f"{m.s:.5f}", "n.d", "n.d", "n.d", "n.d", "n.d", "n.d", info,
-            ]
-            out.write("\t".join(fields) + "\n")
+            out.write(_format_pmagani_specimen_line(m))
 
     for iorient, result in read_ani_mean_results(old_path):
         if iorient not in _ORIENT_TO_FILE_CODE:

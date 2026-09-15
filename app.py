@@ -609,13 +609,29 @@ class AmsApp:
         if not path:
             return
         default_new_path = ani_path_for(path)
-        new_path = filedialog.asksaveasfilename(
-            title="Archive into .pmagani (pick an existing file to add to it, or a new name to create one)",
-            initialfile=os.path.basename(default_new_path),
+        # "Open" (pas "Save As") pour cibler un .pmagani DEJA existant -
+        # demande explicite utilisateur ("peut on archiver les nouvelles
+        # donnees d'un point .asc dans un fichier existant sans avoir a
+        # le remplacer") : asksaveasfilename affiche l'avertissement
+        # systeme macOS "ce fichier existe deja, le remplacer ?" des
+        # qu'on choisit un fichier existant - trompeur ici puisqu'on ne
+        # remplace jamais rien (archive_asc_file n'ajoute que les
+        # specimens manquants). Annuler cette 1ere boite -> propose d'en
+        # creer un nouveau (asksaveasfilename, ou l'avertissement est
+        # legitime : un NOUVEAU fichier qui porterait un nom deja pris
+        # serait bien remplace).
+        new_path = filedialog.askopenfilename(
+            title="Archive into an existing .pmagani (Cancel to create a new file instead)",
             initialdir=os.path.dirname(default_new_path),
-            defaultextension=".pmagani", filetypes=[("pmagani", "*.pmagani"), ("All files", "*.*")])
+            filetypes=[("pmagani", "*.pmagani"), ("All files", "*.*")])
         if not new_path:
-            return
+            new_path = filedialog.asksaveasfilename(
+                title="Create a new .pmagani",
+                initialfile=os.path.basename(default_new_path),
+                initialdir=os.path.dirname(default_new_path),
+                defaultextension=".pmagani", filetypes=[("pmagani", "*.pmagani"), ("All files", "*.*")])
+            if not new_path:
+                return
         try:
             new_path, new_measurements, already_present, warnings = archive_asc_file(path, new_path)
         except OSError as e:

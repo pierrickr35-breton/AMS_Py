@@ -128,6 +128,7 @@ def parse_asc_file(path: str) -> Tuple[List[AMSMeasurement], List[str]]:
             # Scan jusqu'au marqueur "  susc.  " (branche F1/F3 : non
             # verifiee, portee telle quelle depuis le Fortran)
             s_val, sigma_pct, ftest, ftest12, ftest23 = None, None, None, None, None
+            field_am = None
             truc2 = "N0"
             found_susc = False
             while i < n:
@@ -166,6 +167,17 @@ def parse_asc_file(path: str) -> Tuple[List[AMSMeasurement], List[str]]:
                     if len(ftoks) >= 3:
                         truc2 = ftoks[1]
                         s_val = float(ftoks[2])
+                        # ftoks[0] : champ applique (A/m - voir
+                        # AMSMeasurement.field) - demande explicite
+                        # utilisateur ("the field used (in A/m)... The
+                        # MFK2 instrument allow measurements at
+                        # different field values"), disponible sur la
+                        # MEME ligne que le marqueur F1/F3 (ex.
+                        # "200 F1 25.21E-03 ...").
+                        try:
+                            field_am = float(ftoks[0])
+                        except ValueError:
+                            field_am = None
                     if len(ftoks) >= 7:
                         try:
                             sigma_pct = float(ftoks[3])
@@ -241,6 +253,7 @@ def parse_asc_file(path: str) -> Tuple[List[AMSMeasurement], List[str]]:
             cin=cin, caz=caz, dip=dip, str_=str_,
             k11=k11, k22=k22, k33=k33, k12=k12, k23=k23, k13=k13, s=s_val,
             info=info, sigma=sigma_pct, ftest=ftest, ftest12=ftest12, ftest23=ftest23,
+            field=field_am,
         ))
 
     return out, warnings
@@ -264,15 +277,23 @@ def archive_asc_file(
     ci-dessus : "99PP1403B1"/"99PP1403B2" absents d'un .ANI deja
     converti, "mesures ajoutees plus tard").
 
-    Chaque specimen du .asc dont (id, code2) existe DEJA dans
+    Chaque specimen du .asc dont (id, code2, field) existe DEJA dans
     `pmagani_path` est laisse INTACT (pas touche, pas deplace, pas
     re-ecrit - _insert_pmagani_line n'est appele que pour les nouvelles
     lignes) ; seuls les specimens VRAIMENT nouveaux sont ajoutes,
     prealablement au niveau du fichier (section mean/commentaires/
-    marquage export DEJA presents restent tels quels). `pmagani_path`
-    par defaut : voir ams_prmag.ani_path_for(asc_path) - peut deja
-    exister (fichier archive lors d'un passage precedent) ou non
-    (premier archivage, cree comme avant).
+    marquage export DEJA presents restent tels quels). `field` (voir
+    AMSMeasurement.field) fait PARTIE de la cle - demande explicite
+    utilisateur ("the field used (in A/m)... The MFK2 instrument allow
+    measurements at different field values") : verifie sur un vrai
+    fichier (pierrick-MFK2.asc) qu'un MEME specimen/code2 (ex. "CALIB",
+    le standard de calibration) est reellement remesure a PLUSIEURS
+    champs distincts (5, 50, 200, 425, 700 A/m) - une cle (id, code2)
+    seule aurait pris ces remesures pour des doublons et perdu toutes
+    sauf la premiere archivee. `pmagani_path` par defaut : voir
+    ams_prmag.ani_path_for(asc_path) - peut deja exister (fichier
+    archive lors d'un passage precedent) ou non (premier archivage,
+    cree comme avant).
 
     Retourne (pmagani_path, nouveaux, deja_presents, warnings) - voir
     parse_asc_file pour warnings (blocs .asc illisibles)."""
@@ -284,14 +305,14 @@ def archive_asc_file(
     existing_keys = set()
     if os.path.exists(pmagani_path):
         existing_keys = {
-            (m.id.strip().upper(), m.code2.strip().upper())
+            (m.id.strip().upper(), m.code2.strip().upper(), m.field)
             for m in _read_pmagani_file(pmagani_path)
         }
 
     new_measurements: List[AMSMeasurement] = []
     already_present: List[AMSMeasurement] = []
     for m in measurements:
-        key = (m.id.strip().upper(), m.code2.strip().upper())
+        key = (m.id.strip().upper(), m.code2.strip().upper(), m.field)
         if key in existing_keys:
             already_present.append(m)
             continue

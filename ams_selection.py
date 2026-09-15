@@ -69,6 +69,19 @@ class AMSMeasurement:
     # touche par cette fonctionnalite continue de tout exporter sans
     # rien changer a son comportement actuel.
     export: str = "Y"
+    # Champ applique (A/m) durant la mesure - colonne .pmagani DEDIEE
+    # (meme convention/fichier partage que calcul.AniTensor.field cote
+    # STARpaleomag_Py) - demande explicite utilisateur ("in the AMS
+    # measurements, there is also an important parameter, the field
+    # used (in A/m)... The MFK2 instrument allow measurements at
+    # different field values") : le kappabridge MFK2 peut mesurer un
+    # meme lot de specimens a plusieurs champs differents (200, 425,
+    # 700, 50, 5 A/m... vus sur un vrai fichier .asc) - perdu jusqu'ici,
+    # jamais ecrit dans .pmagani bien que deja PARSE depuis le .asc
+    # (voir ams_asc.parse_asc_file, marqueur F1/F3). None si non
+    # disponible (ancien .ANI, ou branche "susc." du .asc - non
+    # verifiee, voir ams_asc.py).
+    field: Optional[float] = None
 
 
 def is_imaginary_component(m: AMSMeasurement) -> bool:
@@ -202,11 +215,18 @@ def apply_orientation(m: AMSMeasurement, orientation: int) -> np.ndarray:
 _PMAGANI_HEADER = [
     "specimen", "code2", "etape",
     "k11", "k22", "k33", "k12", "k23", "k13", "s(SI*1e-5)",
-    "n_positions", "sigma", "ftest", "ftest12", "ftest23", "quality", "export", "info",
+    "n_positions", "sigma", "ftest", "ftest12", "ftest23", "quality",
+    "field_Am", "export", "info",
 ]
-# nombre de colonnes d'un fichier ecrit AVANT l'ajout de "export" (voir
-# AMSMeasurement.export) - meme principe que _PMAGANI_MEAN_HEADER_LEGACY_LEN.
-_PMAGANI_HEADER_LEGACY_LEN = len(_PMAGANI_HEADER) - 1
+# TROIS paliers de largeur possibles pour un fichier .pmagani specimen
+# (meme principe que _PMAGANI_MEAN_HEADER_LEGACY_LEN/_NO_EXPORT_LEN) :
+# le plus ancien format (ni field_Am ni export, info en dernier), un
+# format intermediaire (export ajoute, PAS encore field_Am - session
+# precedente), et le format actuel (field_Am + export avant info) -
+# demande explicite utilisateur ("the field used (in A/m)... The MFK2
+# instrument allow measurements at different field values").
+_PMAGANI_HEADER_LEGACY_LEN = len(_PMAGANI_HEADER) - 2
+_PMAGANI_HEADER_NO_FIELD_LEN = len(_PMAGANI_HEADER) - 1
 
 # `s` en SI*1e-5 (ex. 7261 = 0.07261 SI) - convention Bartington ("since
 # the 80s ... measure in 1e-5 SI assuming a volume of 10cc ... could read
@@ -284,7 +304,7 @@ def _format_pmagani_specimen_line(m: AMSMeasurement) -> str:
     possible to export from AMS_py only the data and mean tensors that
     we want to export"), pour que la colonne "export" ajoutee ici soit
     ecrite PARTOUT de la meme facon, sans re-dupliquer une 4e fois cette
-    liste de 18 champs."""
+    liste de 19 champs."""
     info = f'"{m.info}"' if m.info else '""'
     fields = [
         m.id, m.code2, str(m.etape),
@@ -295,6 +315,7 @@ def _format_pmagani_specimen_line(m: AMSMeasurement) -> str:
         _fmt_pmagani_stat(m.sigma), _fmt_pmagani_stat(m.ftest),
         _fmt_pmagani_stat(m.ftest12), _fmt_pmagani_stat(m.ftest23),
         m.quality or "n.d",
+        _fmt_pmagani_stat(m.field),
         m.export or "Y",
         info,
     ]
@@ -590,14 +611,16 @@ def mark_pmagani_export(
                 out_lines.append("\t".join(_PMAGANI_HEADER) if len(parts) < len(_PMAGANI_HEADER) else line)
                 continue
             if len(parts) >= len(_PMAGANI_HEADER):
-                pass  # deja la colonne "export" en place, index 16
+                pass  # deja field_Am + export en place, index 16/17
+            elif len(parts) >= _PMAGANI_HEADER_NO_FIELD_LEN:
+                parts = parts[:16] + ["n.d"] + parts[16:]  # insere "field_Am" avant "export"
             elif len(parts) >= _PMAGANI_HEADER_LEGACY_LEN:
-                parts = parts[:16] + [""] + parts[16:]  # insere "export" avant "info"
+                parts = parts[:16] + ["n.d", ""] + parts[16:]  # insere field_Am="n.d" puis export avant "info"
             else:
                 out_lines.append(line)
                 continue
             included = parts[0].strip().upper() in selected_specimen_ids
-            parts[16] = "Y" if included else "N"
+            parts[17] = "Y" if included else "N"
             if included:
                 n_spec_in += 1
             else:
@@ -691,17 +714,21 @@ def _read_pmagani_file(path: str) -> List[AMSMeasurement]:
             m.ftest23 = _parse_pmagani_stat(parts[14]) if len(parts) > 14 else None
             if len(parts) > 15 and parts[15].strip() in ("g", "b"):
                 m.quality = parts[15].strip()
-            # export/info : retro-compatibilite sur le nombre de colonnes
-            # (meme principe que _PMAGANI_MEAN_HEADER_LEGACY_LEN) - un
-            # fichier ecrit AVANT l'ajout de "export" a info en colonne
-            # 16 (_PMAGANI_HEADER_LEGACY_LEN colonnes) ; un fichier plus
-            # recent a "export" en 16 et info decale en 17.
+            # field_Am/export/info : retro-compatibilite sur le nombre de
+            # colonnes (meme principe que _PMAGANI_MEAN_HEADER_LEGACY_LEN/
+            # _NO_EXPORT_LEN) - TROIS paliers : le plus ancien fichier n'a
+            # ni field_Am ni export (info en 16), un fichier intermediaire
+            # a export mais pas field_Am (export en 16, info en 17), le
+            # format actuel a field_Am puis export avant info (16/17/18).
             if len(parts) >= len(_PMAGANI_HEADER):
-                export_raw, info_idx = parts[16].strip(), 17
+                field_raw, export_raw, info_idx = parts[16].strip(), parts[17].strip(), 18
+            elif len(parts) >= _PMAGANI_HEADER_NO_FIELD_LEN:
+                field_raw, export_raw, info_idx = "", parts[16].strip(), 17
             elif len(parts) >= _PMAGANI_HEADER_LEGACY_LEN:
-                export_raw, info_idx = "Y", 16
+                field_raw, export_raw, info_idx = "", "Y", 16
             else:
-                export_raw, info_idx = "Y", None
+                field_raw, export_raw, info_idx = "", "Y", None
+            m.field = _parse_pmagani_stat(field_raw)
             m.export = export_raw if export_raw in ("Y", "N") else "Y"
             if info_idx is not None and len(parts) > info_idx:
                 info = parts[info_idx].strip()

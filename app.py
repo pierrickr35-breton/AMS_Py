@@ -608,30 +608,42 @@ class AmsApp:
             title="Import .asc", filetypes=[("AGICO .asc", "*.asc *.ASC"), ("All files", "*.*")])
         if not path:
             return
-        default_new_path = ani_path_for(path)
-        # "Open" (pas "Save As") pour cibler un .pmagani DEJA existant -
-        # demande explicite utilisateur ("peut on archiver les nouvelles
-        # donnees d'un point .asc dans un fichier existant sans avoir a
-        # le remplacer") : asksaveasfilename affiche l'avertissement
-        # systeme macOS "ce fichier existe deja, le remplacer ?" des
-        # qu'on choisit un fichier existant - trompeur ici puisqu'on ne
-        # remplace jamais rien (archive_asc_file n'ajoute que les
-        # specimens manquants). Annuler cette 1ere boite -> propose d'en
-        # creer un nouveau (asksaveasfilename, ou l'avertissement est
-        # legitime : un NOUVEAU fichier qui porterait un nom deja pris
-        # serait bien remplace).
-        new_path = filedialog.askopenfilename(
-            title="Archive into an existing .pmagani (Cancel to create a new file instead)",
-            initialdir=os.path.dirname(default_new_path),
-            filetypes=[("pmagani", "*.pmagani"), ("All files", "*.*")])
-        if not new_path:
-            new_path = filedialog.asksaveasfilename(
-                title="Create a new .pmagani",
-                initialfile=os.path.basename(default_new_path),
+        # Si un .pmagani est DEJA ouvert, archiver directement dedans -
+        # demande explicite utilisateur ("si on a deja ouvert le
+        # pmagani. Ensuite si on demande l'archivage, il suffit de
+        # verifier que le meme specimen est bien present dans le prmag
+        # associe") : pas besoin de redemander une cible, c'est deja
+        # celle sur laquelle l'utilisateur travaille - la verification
+        # utile se fait plus loin (specimens nouvellement archives
+        # absents du .prmag compagnon), pas au choix du fichier.
+        if self.ani_path and os.path.exists(self.ani_path):
+            new_path = self.ani_path
+        else:
+            default_new_path = ani_path_for(path)
+            # "Open" (pas "Save As") pour cibler un .pmagani DEJA
+            # existant - demande explicite utilisateur ("peut on
+            # archiver les nouvelles donnees d'un point .asc dans un
+            # fichier existant sans avoir a le remplacer") :
+            # asksaveasfilename affiche l'avertissement systeme macOS
+            # "ce fichier existe deja, le remplacer ?" des qu'on choisit
+            # un fichier existant - trompeur ici puisqu'on ne remplace
+            # jamais rien (archive_asc_file n'ajoute que les specimens
+            # manquants). Annuler cette 1ere boite -> propose d'en
+            # creer un nouveau (asksaveasfilename, ou l'avertissement
+            # est legitime : un NOUVEAU fichier qui porterait un nom
+            # deja pris serait bien remplace).
+            new_path = filedialog.askopenfilename(
+                title="Archive into an existing .pmagani (Cancel to create a new file instead)",
                 initialdir=os.path.dirname(default_new_path),
-                defaultextension=".pmagani", filetypes=[("pmagani", "*.pmagani"), ("All files", "*.*")])
+                filetypes=[("pmagani", "*.pmagani"), ("All files", "*.*")])
             if not new_path:
-                return
+                new_path = filedialog.asksaveasfilename(
+                    title="Create a new .pmagani",
+                    initialfile=os.path.basename(default_new_path),
+                    initialdir=os.path.dirname(default_new_path),
+                    defaultextension=".pmagani", filetypes=[("pmagani", "*.pmagani"), ("All files", "*.*")])
+                if not new_path:
+                    return
         try:
             new_path, new_measurements, already_present, warnings = archive_asc_file(path, new_path)
         except OSError as e:
@@ -674,6 +686,26 @@ class AmsApp:
             self.prmag_specimens = read_prmag_specimens(prmag_candidate)
             self.prmag_path = prmag_candidate
             msg += f"companion prmag file found: {prmag_candidate}\n"
+        # Verifie que les specimens NOUVELLEMENT archives figurent bien
+        # dans le .prmag compagnon - demande explicite utilisateur (voir
+        # plus haut) : un .pmagani est cense decrire des specimens du
+        # .prmag associe (meme principe que calcul.find_orphan_ani_
+        # specimens cote STARpaleomag_Py) ; un id absent du .prmag signale
+        # un vrai probleme (faute de frappe, .asc d'un autre jeu de
+        # donnees) plutot qu'un simple "pas encore mesure" - seuls les
+        # specimens VRAIMENT ajoutes cette fois sont verifies (les
+        # already_present l'ont deja ete lors d'un archivage precedent).
+        if self.prmag_specimens and new_measurements:
+            orphan_ids = sorted({
+                m.id.strip() for m in new_measurements
+                if self.prmag_specimens.get(m.id) is None
+            })
+            if orphan_ids:
+                shown = ", ".join(orphan_ids[:20])
+                more = f", ... ({len(orphan_ids) - 20} more)" if len(orphan_ids) > 20 else ""
+                msg += (f"WARNING: {len(orphan_ids)} newly archived specimen(s) have NO "
+                        f"counterpart in the companion .prmag - check for a mismatched "
+                        f"file or a typo: {shown}{more}\n")
         self._afficher(msg)
 
     def lister_fichier_ani(self):

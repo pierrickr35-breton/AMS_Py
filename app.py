@@ -181,6 +181,13 @@ class AmsApp:
         text_xscroll = ttk.Scrollbar(self.text_frame, orient=tk.HORIZONTAL, command=self.text_area.xview)
         self.text_area.configure(yscrollcommand=text_yscroll.set, xscrollcommand=text_xscroll.set)
         self.text_area.tag_configure("prompt", foreground="#c0392b")
+        # Verdict PmagPy Hext F-test (satisfactory/not satisfactory) mis
+        # en evidence - demande explicite utilisateur ("write the message
+        # in bold green when it is satisfactory and in bold red when it
+        # is not, especially in the view the 15 ATRM tensors per
+        # sample") - voir _afficher.
+        self.text_area.tag_configure("sat_ok", foreground="#1e8449", font=("Courier", 14, "bold"))
+        self.text_area.tag_configure("sat_bad", foreground="#c0392b", font=("Courier", 14, "bold"))
         self.text_area.grid(row=0, column=0, sticky="nsew")
         text_yscroll.grid(row=0, column=1, sticky="ns")
         text_xscroll.grid(row=1, column=0, sticky="ew")
@@ -210,7 +217,20 @@ class AmsApp:
     def _afficher(self, text):
         if self.text_area.get("1.0", "end-1c").strip():
             self.text_area.insert(tk.END, "\n" + "-" * 60 + "\n")
-        self.text_area.insert(tk.END, text)
+        # Met en gras vert/rouge toute ligne portant le verdict PmagPy
+        # Hext F-test (satisfactory/not satisfactory) - demande explicite
+        # utilisateur ("write the message in bold green when it is
+        # satisfactory and in bold red when it is not, especially in the
+        # view the 15 ATRM tensors per sample") - voir ams_stats.
+        # format_measurement_list, qui produit cette ligne pour chaque
+        # groupe de specimen affiche par "List measurements"/etc.
+        for line in text.splitlines(keepends=True):
+            if "(not satisfactory)" in line:
+                self.text_area.insert(tk.END, line, "sat_bad")
+            elif "(satisfactory)" in line:
+                self.text_area.insert(tk.END, line, "sat_ok")
+            else:
+                self.text_area.insert(tk.END, line)
         self.text_area.see(tk.END)
 
     def _console_input(self, prompt, default=""):

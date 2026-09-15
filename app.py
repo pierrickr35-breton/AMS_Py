@@ -38,7 +38,7 @@ from ams_selection import (
     create_empty_pmagani_if_missing,
     _ORIENT_TO_FILE_CODE,
 )
-from ams_prmag import read_prmag_specimens, ani_path_for
+from ams_prmag import read_prmag_specimens, ani_path_for, create_prmag_from_legacy_ani
 from ams_asc import archive_asc_file
 from ams_calcul import correct_direction_with_tensor, subtract_tensors
 from ams_bootstrap import compute_bootstrap_mean, format_bootstrap_result
@@ -322,6 +322,8 @@ class AmsApp:
         files_menu.add_separator()
         files_menu.add_command(label="Import legacy .ANI to .pmagani...", command=self.ouvrir_import_legacy_ani_dialog)
         files_menu.add_command(label="Archive ASC into .pmagani...", command=self.ouvrir_archiver_asc_dialog)
+        files_menu.add_command(
+            label="Create prmag from legacy .ANI...", command=self.ouvrir_creer_prmag_from_ani_dialog)
         files_menu.add_separator()
         files_menu.add_command(label="Export to Magic", command=self.exporter_magic_dialog)
         files_menu.add_command(
@@ -621,6 +623,64 @@ class AmsApp:
             self._afficher(f"companion prmag file found: {prmag_candidate}\n")
             if missing:
                 self._afficher(self._format_missing_prmag_warning(missing))
+
+    def ouvrir_creer_prmag_from_ani_dialog(self):
+        """Cree un .prmag a partir des informations d'orientation (cin/
+        caz/dip/str_) d'un ANCIEN fichier .ANI - demande explicite
+        utilisateur ("un collegue souhaite avoir la possibilite de creer
+        le prmag a partir du .ANI qui contient les infos de corrections
+        de carotte"), equivalent AMS_Py de STARpaleomag_Py/field_notes.
+        write_prmag_from_field_notes (mais depuis un .ANI plutot que des
+        field notes brutes - voir ams_prmag.create_prmag_from_legacy_ani
+        pour le detail, notamment la deduplication par specimen : un
+        .ANI reel repete chaque specimen ATRM une fois par variante
+        jackknife A0/A+/A-/A1/B1.../B6).
+
+        Convertit AUSSI ce meme .ANI en .pmagani dans la foulee (le
+        tenseur y est deja disponible, pas de raison de laisser un
+        compagnon vide comme pour un .prmag cree depuis de simples
+        field notes - voir ams_selection.import_legacy_ani), sauf si un
+        .pmagani portant deja ce nom existe (jamais ecrase)."""
+        ani_path = filedialog.askopenfilename(
+            title="Select the legacy .ANI file",
+            filetypes=[("Legacy .ANI", "*.ANI *.ani"), ("All files", "*.*")])
+        if not ani_path:
+            return
+        base, _ext = os.path.splitext(ani_path)
+        default_prmag_path = base + ".prmag"
+        prmag_path = filedialog.asksaveasfilename(
+            title="Save as .prmag", initialfile=os.path.basename(default_prmag_path),
+            initialdir=os.path.dirname(default_prmag_path),
+            defaultextension=".prmag", filetypes=[("STARpaleomag_Py .prmag", "*.prmag"), ("All files", "*.*")])
+        if not prmag_path:
+            return
+        try:
+            n_prmag = create_prmag_from_legacy_ani(ani_path, prmag_path)
+        except OSError as e:
+            self._showerror("Error", f"Could not read {ani_path}:\n{e}")
+            return
+        msg = (
+            f"{n_prmag} specimen(s) -> {prmag_path}\n"
+            "Only specimen id and core azimuth/dip/bedding come from the "
+            ".ANI - site, date, geology, volume/mass are left as 'n.d'/"
+            "defaults (fill in later with STARpaleomag_Py's Complete "
+            "sample information...).\n"
+        )
+
+        pmagani_path = ani_path_for(prmag_path)
+        if os.path.exists(pmagani_path):
+            msg += f"companion .pmagani already exists, left untouched: {pmagani_path}\n"
+        else:
+            import_legacy_ani(ani_path, pmagani_path)
+            msg += f"Also converted the tensors themselves -> {pmagani_path}\n"
+
+        self.prmag_specimens = read_prmag_specimens(prmag_path)
+        self.prmag_path = prmag_path
+        self.donnees = read_ani_file(pmagani_path)
+        self.ani_path = pmagani_path
+        self.selection = []
+        self._showinfo("prmag created from legacy .ANI", msg)
+        self._afficher(msg)
 
     def ouvrir_archiver_asc_dialog(self):
         """Archive un fichier .asc AGICO (rapport texte du kappabridge,

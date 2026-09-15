@@ -16,6 +16,7 @@ par jointure sur ce numero de specimen - meme convention de nommage que
 STARpaleomag_Py/calcul.ani_path_for (memes basenames pour .prmag/.pmagres/.ANI)."""
 
 import os
+import re
 from dataclasses import dataclass
 from typing import Dict, Optional
 
@@ -115,3 +116,113 @@ def read_prmag_specimens(filepath: str, encoding: str = "utf-8") -> Dict[str, Pr
         _skip_blank_and_comments()
 
     return specimens
+
+
+def _legacy_ani_specimen_to_sample(specimen: str) -> str:
+    """19DN1511A -> 19DN1511 (retire la lettre de sous-carotte finale,
+    meme convention que detailed_export._sample_display_name cote
+    STARpaleomag_Py)."""
+    return re.sub(r"[A-Za-z]$", "", specimen.strip())
+
+
+def _legacy_ani_sample_to_site(sample: str) -> str:
+    """19DN1511 -> 19DN15 (les 6 premiers caracteres = annee+site,
+    convention Rennes)."""
+    return sample[:6]
+
+
+def create_prmag_from_legacy_ani(
+    ani_path: str,
+    prmag_path: str,
+    volume: float = 10.80,
+) -> int:
+    """Cree un .prmag STARpaleomag_Py (mesures VIDES) a partir des
+    informations d'orientation d'un ANCIEN fichier .ANI - demande
+    explicite utilisateur ("un collegue souhaite avoir la possibilite
+    de creer le prmag a partir du .ANI qui contient les infos de
+    corrections de carotte"). Modifications initiales fournies par un
+    collegue (voir historique de conversation), integrees ici avec un
+    correctif de deduplication (voir plus bas).
+
+    Colonnes du .ANI (verifie octet-pres contre de vrais fichiers .ANI
+    reels, ex. Chili_Briques_pmag.ANI - meme format documente par
+    ams_selection._read_ani_file_legacy : `D id cin caz dip str etape
+    code2 k11 k22 k33 k12 k23 k13 s [info]`) :
+        1 (0-index) = specimen
+        2 = dip (cin - pendage/plunge de l'axe du carottier)
+        3 = azimuth (caz - azimut de l'axe du carottier)
+        4 = bed_dip (dip - pendage de la stratification)
+        5 = bed_dip_strike (str_ - direction de la stratification)
+
+    Toutes les autres metadonnees (site/formation/age/lithologie...)
+    sont ecrites "n.d" - a completer ensuite (STARpaleomag_Py, "Complete
+    sample information...").
+
+    BUG CORRIGE ici (present dans la version initiale du collegue) : un
+    specimen ATRM apparait normalement PLUSIEURS FOIS dans un .ANI reel
+    (une ligne par variante jackknife A0/A+/A-/A1/B1/A2/B2.../B6, 15 au
+    total - verifie sur Chili_Briques_pmag.ANI : "11CA0101A" y apparait
+    15 fois, toujours avec les MEMES cin/caz/dip/str) - sans
+    deduplication, le .prmag resultant aurait contenu 15 blocs
+    identiques pour ce meme specimen au lieu d'un seul. Seule la
+    PREMIERE ligne rencontree pour chaque specimen est gardee (les
+    valeurs d'orientation sont de toute facon identiques d'une variante
+    a l'autre du meme specimen).
+
+    Retourne le nombre de specimens (uniques) ecrits."""
+    records = []
+    seen_specimens = set()
+
+    with open(ani_path, "r", encoding="iso-8859-1", errors="replace") as f:
+        for raw_line in f:
+            line = raw_line.strip()
+            if not line:
+                continue
+
+            fields = line.split()
+            if len(fields) < 6 or fields[0].upper() != "D":
+                continue
+
+            specimen = fields[1]
+            if specimen in seen_specimens:
+                continue
+
+            try:
+                dip = float(fields[2])
+                azimuth = float(fields[3])
+                bed_dip = float(fields[4])
+                bed_dip_strike = float(fields[5])
+            except ValueError:
+                continue
+
+            seen_specimens.add(specimen)
+            sample = _legacy_ani_specimen_to_sample(specimen)
+            site = _legacy_ani_sample_to_site(sample)
+            records.append((specimen, sample, site, azimuth, dip, bed_dip_strike, bed_dip))
+
+    with open(prmag_path, "w", encoding="utf-8", newline="\n") as f:
+        for specimen, sample, site, azimuth, dip, bed_dip_strike, bed_dip in records:
+            f.write(
+                f"specimen: {specimen}\tsample: {sample}\tsite: {site}\t"
+                f"volume: {volume:.2f}\tmass: n.d\tlat: n.d\tlon: n.d\t"
+                "elevation: n.d\tstratigraphic_height: n.d\tcomment: n.d\n"
+            )
+            f.write(
+                f"azimuth: {azimuth}\tdip: {dip}\tdate: n.d\t"
+                "magnetic_azimuth: n.d\tsolar_azimuth: n.d\torient_tool: n.d\n"
+            )
+            f.write(f"bed_dip_strike: {bed_dip_strike}\tbed_dip: {bed_dip}\n")
+            f.write(
+                "formation: n.d\tage: n.d\tgeologic_classes: n.d\t"
+                "geologic_types: n.d\tlithologies: n.d\tlocation: n.d\t"
+                "obs: n.d\tmethod_codes: n.d\n"
+            )
+            f.write(
+                "step\tcod1\tcod2\tx\ty\tz\terror\tquality\tinstrument\ts\t"
+                "treat_temp\ttreat_ac_field\ttreat_dc_strongfield\ttreat_dc_lowfield\t"
+                "treat_dc_field_phi\ttreat_dc_field_theta\t"
+                "method_codes\tinstrument_codes\ttreat_step_num\n"
+            )
+            f.write("\n")  # separateur de bloc (voir read_prmag_specimens)
+
+    return len(records)

@@ -278,7 +278,7 @@ def _fmt_pmagani_stat(v: Optional[float]) -> str:
 def _format_pmagani_specimen_line(m: AMSMeasurement) -> str:
     """Formate UNE ligne de la section specimen (voir _PMAGANI_HEADER) -
     factorise entre les 3 ecrivains ad hoc qui dupliquaient chacun cette
-    liste de champs (ams_asc.import_asc_file, ams_selection.
+    liste de champs (ams_asc.archive_asc_file, ams_selection.
     import_legacy_ani, et ouvrir_marquer_export_dialog cote app.py qui
     reecrit le fichier entier) - demande explicite utilisateur ("is it
     possible to export from AMS_py only the data and mean tensors that

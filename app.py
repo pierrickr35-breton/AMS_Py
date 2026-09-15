@@ -38,7 +38,7 @@ from ams_selection import (
     _ORIENT_TO_FILE_CODE,
 )
 from ams_prmag import read_prmag_specimens, ani_path_for
-from ams_asc import import_asc_file
+from ams_asc import archive_asc_file
 from ams_calcul import correct_direction_with_tensor, subtract_tensors
 from ams_bootstrap import compute_bootstrap_mean, format_bootstrap_result
 from ams_stats import (
@@ -300,7 +300,7 @@ class AmsApp:
         files_menu.add_command(label="List File .pmagani", command=self.lister_fichier_ani)
         files_menu.add_separator()
         files_menu.add_command(label="Import legacy .ANI to .pmagani...", command=self.ouvrir_import_legacy_ani_dialog)
-        files_menu.add_command(label="convert ASC to .pmagani...", command=self.ouvrir_convert_asc_dialog)
+        files_menu.add_command(label="Archive ASC into .pmagani...", command=self.ouvrir_archiver_asc_dialog)
         files_menu.add_separator()
         files_menu.add_command(label="Export to Magic", command=self.exporter_magic_dialog)
         files_menu.add_command(
@@ -586,38 +586,67 @@ class AmsApp:
             if missing:
                 self._afficher(self._format_missing_prmag_warning(missing))
 
-    def ouvrir_convert_asc_dialog(self):
-        """Convertit un fichier .asc AGICO (rapport texte du kappabridge,
-        logiciel SUSAR/Anisoft) directement vers .pmagani - port de
-        `readasc` (voir ams_asc.py pour le detail et l'etat de verification
-        contre un vrai fichier .asc) - demande explicite utilisateur
-        ("can you also change the import asc files to new format"). cin/
-        caz/dip/str_ et les statistiques de Hext (err.%/F/F12/F23, quand
-        presentes dans le rapport) sont ecrites directement (elles
-        viennent reellement du .asc, contrairement au cas .prmag)."""
+    def ouvrir_archiver_asc_dialog(self):
+        """Archive un fichier .asc AGICO (rapport texte du kappabridge,
+        logiciel SUSAR/Anisoft) dans un .pmagani - port de `readasc` (voir
+        ams_asc.archive_asc_file pour le detail/l'etat de verification
+        contre de vrais fichiers .asc) - demande explicite utilisateur
+        ("can you also change the import asc files to new format", puis
+        "l'acquisition de donnees et son archivage lors de la mesure dans
+        le .asc est progressive et peut se faire sur plusieurs
+        semaines... changer en archiver asc dans pmagani") : contrairement
+        a l'ancienne "convert ASC to .pmagani" (qui REECRIVAIT tout le
+        fichier a chaque passage), ce dialogue peut cibler un .pmagani
+        DEJA existant (deja mesure les semaines precedentes, deja
+        eventuellement complete cote AMS_Py - moyennes de site, colonne
+        export) : seuls les specimens du .asc PAS ENCORE dans ce fichier
+        sont ajoutes, le reste du fichier reste intact. cin/caz/dip/str_
+        et les statistiques de Hext (err.%/F/F12/F23, quand presentes dans
+        le rapport) sont ecrites directement (elles viennent reellement du
+        .asc, contrairement au cas .prmag)."""
         path = filedialog.askopenfilename(
             title="Import .asc", filetypes=[("AGICO .asc", "*.asc *.ASC"), ("All files", "*.*")])
         if not path:
             return
         default_new_path = ani_path_for(path)
         new_path = filedialog.asksaveasfilename(
-            title="Save as .pmagani", initialfile=os.path.basename(default_new_path),
+            title="Archive into .pmagani (pick an existing file to add to it, or a new name to create one)",
+            initialfile=os.path.basename(default_new_path),
             initialdir=os.path.dirname(default_new_path),
             defaultextension=".pmagani", filetypes=[("pmagani", "*.pmagani"), ("All files", "*.*")])
         if not new_path:
             return
         try:
-            new_path, measurements, warnings = import_asc_file(path, new_path)
+            new_path, new_measurements, already_present, warnings = archive_asc_file(path, new_path)
         except OSError as e:
-            self._showerror("Import failed", f"Could not import {path}:\n{e}")
+            self._showerror("Archive failed", f"Could not import {path}:\n{e}")
             return
-        msg = f"Imported {path} -> {new_path}\n{len(measurements)} specimen(s) converted.\n"
+        msg = (f"Archived {path} -> {new_path}\n"
+               f"{len(new_measurements)} new specimen(s) archived, "
+               f"{len(already_present)} already present (skipped).\n")
         if warnings:
             msg += f"{len(warnings)} block(s) skipped:\n" + "\n".join(f"  {w}" for w in warnings[:20])
             if len(warnings) > 20:
                 msg += f"\n  ... and {len(warnings) - 20} more"
             msg += "\n"
-        self.donnees = measurements
+        # self.donnees doit refleter l'etat COMPLET du .pmagani
+        # maintenant que l'archivage est incremental (pas seulement les
+        # measurements du .asc de cette session) - recharge tout depuis
+        # le fichier, MAIS remplace chaque specimen present dans CE .asc
+        # (nouveau ou deja_present) par sa version FRAICHEMENT PARSEE :
+        # .pmagani n'a pas de colonnes cin/caz/dip/str_ (orientation),
+        # donc une relecture pure perdrait celle des specimens que ce
+        # .asc vient justement de fournir - le fichier lui-meme reste
+        # inchange, seul self.donnees (etat en memoire de cette session)
+        # beneficie de cette orientation le temps de cette session.
+        asc_by_key = {
+            (m.id.strip().upper(), m.code2.strip().upper()): m
+            for m in new_measurements + already_present
+        }
+        self.donnees = [
+            asc_by_key.get((m.id.strip().upper(), m.code2.strip().upper()), m)
+            for m in read_ani_file(new_path)
+        ]
         self.ani_path = new_path
         self.selection = []
         # orientation (cin/caz/dip/str) vient deja du .asc lui-meme ici -

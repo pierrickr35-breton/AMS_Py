@@ -1,7 +1,11 @@
-"""Import des fichiers .asc AGICO (rapport texte brut du kappabridge, logiciel
-SUSAR/Anisoft) vers le format .pmagani - port de `readasc` (reference/
+"""Archive les fichiers .asc AGICO (rapport texte brut du kappabridge, logiciel
+SUSAR/Anisoft) dans le format .pmagani - port de `readasc` (reference/
 AMS_OSX_AWE/lect_asc.f:262-434) - demande explicite utilisateur ("can you also
-change the import asc files to new format").
+change the import asc files to new format", puis "l'acquisition de donnees
+et son archivage lors de la mesure dans le .asc est progressive et peut se
+faire sur plusieurs semaines... changer en archiver asc dans pmagani" - voir
+archive_asc_file, qui AJOUTE les specimens vraiment nouveaux a un .pmagani
+deja existant plutot que de le reecrire entierement a chaque passage).
 
 VERIFIE contre un vrai fichier .asc + son .ANI deja converti (Py_Dev/Caleu/
 Caleu.ASC + Caleu.ASC.ANI, fournis par l'utilisateur) : 616/624 blocs
@@ -42,6 +46,7 @@ from typing import List, Optional, Tuple
 
 from ams_selection import (
     AMSMeasurement, _PMAGANI_HEADER, _PMAGANI_UNITS_NOTE, _format_pmagani_specimen_line,
+    _read_pmagani_file, _insert_pmagani_line,
 )
 
 
@@ -241,23 +246,57 @@ def parse_asc_file(path: str) -> Tuple[List[AMSMeasurement], List[str]]:
     return out, warnings
 
 
-def import_asc_file(asc_path: str, new_path: Optional[str] = None) -> Tuple[str, List[AMSMeasurement], List[str]]:
-    """Convertit un fichier .asc directement vers .pmagani (plus vers
-    l'ancien .ANI) - demande explicite utilisateur ("change the import asc
-    files to new format"). `new_path` par defaut : voir ams_prmag.
-    ani_path_for(asc_path). cin/caz/dip/str_ SONT ecrits (ils viennent
-    reellement du .asc, pas d'un .prmag) ; sigma/ftest/ftest12/ftest23 sont
-    popules quand le fichier .asc les fournit (section "Tests for
-    anisotropy") plutot que laisses "n.d"."""
+def archive_asc_file(
+    asc_path: str, pmagani_path: Optional[str] = None
+) -> Tuple[str, List[AMSMeasurement], List[AMSMeasurement], List[str]]:
+    """Archive un fichier .asc dans un .pmagani - port de `readasc`
+    (reference/AMS_OSX_AWE/lect_asc.f:262-434), CHANGE en fonction
+    d'ARCHIVAGE INCREMENTAL (plus une conversion "tout ou rien") -
+    demande explicite utilisateur ("l'acquisition de donnees et son
+    archivage lors de la mesure dans le .asc est progressive et peut se
+    faire sur plusieurs semaines... changer en archiver asc dans
+    pmagani") : le .asc grandit au fil des semaines de mesure (nouveaux
+    specimens ajoutes a la suite par le logiciel du kappabridge) ; la
+    version precedente (import_asc_file) REECRIVAIT tout le .pmagani a
+    chaque passage, perdant silencieusement tout ce qui avait ete
+    ajoute depuis cote AMS_Py (moyennes de site, colonne export Y/N,
+    info) - confirme par le propre historique de ce module (docstring
+    ci-dessus : "99PP1403B1"/"99PP1403B2" absents d'un .ANI deja
+    converti, "mesures ajoutees plus tard").
+
+    Chaque specimen du .asc dont (id, code2) existe DEJA dans
+    `pmagani_path` est laisse INTACT (pas touche, pas deplace, pas
+    re-ecrit - _insert_pmagani_line n'est appele que pour les nouvelles
+    lignes) ; seuls les specimens VRAIMENT nouveaux sont ajoutes,
+    prealablement au niveau du fichier (section mean/commentaires/
+    marquage export DEJA presents restent tels quels). `pmagani_path`
+    par defaut : voir ams_prmag.ani_path_for(asc_path) - peut deja
+    exister (fichier archive lors d'un passage precedent) ou non
+    (premier archivage, cree comme avant).
+
+    Retourne (pmagani_path, nouveaux, deja_presents, warnings) - voir
+    parse_asc_file pour warnings (blocs .asc illisibles)."""
     from ams_prmag import ani_path_for
-    if new_path is None:
-        new_path = ani_path_for(asc_path)
+    if pmagani_path is None:
+        pmagani_path = ani_path_for(asc_path)
     measurements, warnings = parse_asc_file(asc_path)
 
-    with open(new_path, "w", encoding="utf-8") as out:
-        out.write(f"# pmagani v1 - imported from ASC: {os.path.basename(asc_path)}\n")
-        out.write(_PMAGANI_UNITS_NOTE)
-        out.write("\t".join(_PMAGANI_HEADER) + "\n")
-        for m in measurements:
-            out.write(_format_pmagani_specimen_line(m))
-    return new_path, measurements, warnings
+    existing_keys = set()
+    if os.path.exists(pmagani_path):
+        existing_keys = {
+            (m.id.strip().upper(), m.code2.strip().upper())
+            for m in _read_pmagani_file(pmagani_path)
+        }
+
+    new_measurements: List[AMSMeasurement] = []
+    already_present: List[AMSMeasurement] = []
+    for m in measurements:
+        key = (m.id.strip().upper(), m.code2.strip().upper())
+        if key in existing_keys:
+            already_present.append(m)
+            continue
+        _insert_pmagani_line(pmagani_path, _format_pmagani_specimen_line(m), is_mean=False)
+        existing_keys.add(key)  # le .asc lui-meme peut repeter un bloc
+        new_measurements.append(m)
+
+    return pmagani_path, new_measurements, already_present, warnings

@@ -2077,6 +2077,17 @@ class AmsApp:
 
 def main():
     root = tk.Tk()
+    # Force l'encodage systeme de Tcl a utf-8 - demande explicite
+    # utilisateur ("l'appli installee ne fonctionne pas tres bien, par
+    # exemple probleme de texte Latin lors de l'importation. Pas de pb
+    # depuis le terminal") : Tcl/Tk devine son "system encoding" depuis
+    # LANG/LC_ALL au demarrage - un Terminal herite la locale du shell
+    # (LANG deja UTF-8), un .app lance depuis le Finder/Dock n'a
+    # generalement AUCUNE locale definie, Tcl se rabat alors sur un
+    # encodage non-UTF-8 pour les widgets texte, meme si la chaine
+    # Python elle-meme est deja correctement decodee (accents mal
+    # affiches dans l'UI, pas une erreur de lecture de fichier).
+    root.tk.call("encoding", "system", "utf-8")
     AmsApp(root)
     root.mainloop()
 

@@ -67,4 +67,13 @@ app = BUNDLE(
     name='AMS_Py.app',
     icon=None,
     bundle_identifier=None,
+    # LANG/LC_ALL explicites - un .app lance depuis le Finder/Dock n'a
+    # generalement AUCUNE locale definie (contrairement a un Terminal,
+    # qui herite celle du shell) - demande explicite utilisateur
+    # ("l'appli installee ne fonctionne pas tres bien, par exemple
+    # probleme de texte Latin lors de l'importation. Pas de pb depuis le
+    # terminal"). Complement de root.tk.call("encoding", "system",
+    # "utf-8") dans app.py (celui-ci force Tcl/Tk specifiquement ; ceci
+    # couvre tout le reste du processus - locale.*, etc.).
+    info_plist={'LSEnvironment': {'LANG': 'en_US.UTF-8', 'LC_ALL': 'en_US.UTF-8'}},
 )

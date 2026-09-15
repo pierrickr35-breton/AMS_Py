@@ -531,10 +531,10 @@
       </div>
       <div class="item">
         <div class="label">Open File .prmag…</div>
-        <div class="desc">Loads a <code>.prmag</code> file (STARpaleomag_Py's own format) and automatically locates and loads its companion <code>.pmagani</code>. This is the recommended way in — it guarantees the site/sample lookup needed by <strong>Export to Magic</strong> is available from the start.</div>
+        <div class="desc">Loads a <code>.prmag</code> file (STARpaleomag_Py's own format) and automatically locates and loads its companion <code>.pmagani</code>. This is the recommended way in — it guarantees the site/sample lookup needed by <strong>Export to Magic</strong> is available from the start. If neither a <code>.pmagani</code> nor an old <code>.ANI</code> companion exists yet, an empty <code>.pmagani</code> (header only) is created and made the active file automatically — ready for <strong>Archive ASC into .pmagani…</strong> without an extra file dialog.</div>
       </div>
       <div class="item">
-        <div class="label">Liste File .pmagani</div>
+        <div class="label">List File .pmagani</div>
         <div class="desc">Prints every raw tensor currently loaded — the six components as stored, one line per measurement, not the eigen-decomposition (that's <strong>List measurements</strong> below).</div>
       </div>
       <div class="item">
@@ -542,8 +542,16 @@
         <div class="desc">Converts an old-style <code>.ANI</code> file (list-directed Fortran output, no column headers) to the current tab-separated <code>.pmagani</code> format with a proper header row. A one-time upgrade — the old file is untouched.</div>
       </div>
       <div class="item">
-        <div class="label">convert ASC to .pmagani…</div>
-        <div class="desc">Converts an AGICO Kappabridge <code>.asc</code> report (the instrument's own SUSAR/Anisoft software output) directly to <code>.pmagani</code>, tagged <code>code2=N0</code>. Orientation (<code>cin</code>/<code>caz</code>/<code>dip</code>/<code>str</code>) and Hext statistics (err.%, F, F12, F23) are carried straight through whenever the report includes them.</div>
+        <div class="label">Archive ASC into .pmagani…</div>
+        <div class="desc">Reads an AGICO Kappabridge <code>.asc</code> report (the instrument's own SUSAR/Anisoft software output) and <strong>appends</strong> only the specimens not already present (matched on specimen id + code2 + applied field — see below) into an existing <code>.pmagani</code>, rather than regenerating the whole file: a lab's <code>.asc</code> grows over weeks as new specimens are measured, and re-running this on the same growing file must never wipe out site means or export markers already curated in the meantime. If a <code>.pmagani</code> is already the active file, it archives straight into it with no extra dialog — and afterward, any newly-archived specimen with no matching entry in the companion <code>.prmag</code> is flagged (a mismatched file or a typo, most likely). New tensors are tagged <code>code2=N0</code>; orientation (<code>cin</code>/<code>caz</code>/<code>dip</code>/<code>str</code>), Hext statistics (err.%, F, F12, F23), and the applied field (A/m, <code>field_Am</code> column) are carried straight through whenever the report includes them — the MFK2 kappabridge in particular can measure one specimen at several field strengths, each kept as its own row rather than overwriting the previous measurement.</div>
+      </div>
+      <div class="item">
+        <div class="label">Create prmag from legacy .ANI…</div>
+        <div class="desc">Builds a <code>.prmag</code> straight from an old <code>.ANI</code>'s own core-orientation columns (<code>cin</code>/<code>caz</code>/<code>dip</code>/<code>str</code>) — useful when the original field notes are lost but an old <code>.ANI</code> with orientation data survives. Deduplicates by specimen id first: a real ATRM specimen repeats once per jackknife variant (<code>A0</code>/<code>A+</code>/<code>A-</code>/<code>A1</code>/<code>B1</code>…<code>B6</code>, up to 15 rows) in a legacy <code>.ANI</code>, all sharing the same orientation — only the first is kept. Also converts the same <code>.ANI</code> into the companion <code>.pmagani</code> in the same step (the tensor data is already there, no reason to leave it empty), unless one already exists under that name.</div>
+      </div>
+      <div class="item">
+        <div class="label">Mark selection for MagIC export…</div>
+        <div class="desc">Takes whatever is currently built up in <strong>AMS data</strong>'s selection and/or <strong>Mean Results</strong>' working list, and treats it as the <em>complete</em> desired export set for the active <code>.pmagani</code>: every specimen/mean in that set is marked <code>export=Y</code>, every other row in the same file <code>export=N</code> — a replace, not an add. STARpaleomag_Py's own <strong>Export to Magic</strong> then skips any row marked <code>export=N</code> when it reads this same file, so curating a subset here is enough to control what the other application exports, without a separate intermediate file.</div>
       </div>
       <div class="item">
         <div class="label">Export to Magic</div>
@@ -572,7 +580,7 @@
       </div>
       <div class="item">
         <div class="label">List measurements <span class="shortcut">Cmd+L</span></div>
-        <div class="desc">Lists the current selection's principal axes (k1/k2/k3, dec/inc) and shape parameters (L/F/P/P′/T) in the currently chosen orientation — not the raw tensor components (that's <strong>Liste File .pmagani</strong>).</div>
+        <div class="desc">Lists the current selection's principal axes (k1/k2/k3, dec/inc) and shape parameters (L/F/P/P′/T) in the currently chosen orientation — not the raw tensor components (that's <strong>List File .pmagani</strong>). The PmagPy Hext F-test verdict line, shown once per specimen group, is highlighted in bold green (<code>satisfactory</code>) or bold red (<code>not satisfactory</code>) — the same convention applies anywhere else this verdict is printed.</div>
       </div>
       <div class="item">
         <div class="label">List measurements with depth <span class="badge-todo">not ported</span></div>
@@ -655,7 +663,7 @@
         <div class="desc">Not yet implemented.</div>
       </div>
       <div class="item">
-        <div class="label">Grand cercle <span class="badge-todo">stub in the original Fortran too</span></div>
+        <div class="label">Great circle <span class="badge-todo">stub in the original Fortran too</span></div>
         <div class="desc">The original Fortran routine is itself an empty stub — nothing to port.</div>
       </div>
       <div class="item">
@@ -694,7 +702,7 @@
         <div class="desc">Flinn diagram and T–P′ diagram together on one page — a single menu entry replacing what used to be two separate Fortran ones. Source is prompted the same way as <strong>Stereographique</strong>: raw data (0), already-computed mean results (1), or both (2). Specimen ids are annotated next to points only below 15 measurements, to avoid clutter.</div>
       </div>
       <div class="item">
-        <div class="label">AMS &gt;&gt; fichiers GMT <span class="badge-todo">stub in the original Fortran too</span></div>
+        <div class="label">AMS &gt;&gt; GMT files <span class="badge-todo">stub in the original Fortran too</span></div>
         <div class="desc">The original Fortran routine is itself an empty stub — nothing to port.</div>
       </div>
       <div class="item">
@@ -709,7 +717,7 @@
       <p class="menu-desc">Two sections in the same file — specimen tensors, then site-mean tensors — each with its own column schema, exactly the way STARpaleomag_Py's own <code>.pmagres</code> separates specimen results from site means. An older <code>.pmagani</code> written before the site-mean section existed has no marker for it at all, and is read entirely as the specimen section, unchanged.</p>
 
       <h3 class="group" id="pmagani-specimen">Specimen section</h3>
-      <p style="color:var(--ink-soft); max-width:68ch;">Marked by the header line <code>#specimen tensor results</code>. One row per tensor variant — <code>code2</code> distinguishes <code>A0</code>/<code>F0</code> (STARpaleomag_Py, TRM/ARM anisotropy) from <code>N0</code> (AMS_Py, bulk susceptibility) and the 14 STARpaleomag_Py jackknife variants (<code>A+</code>/<code>A-</code>/<code>A1</code>…<code>B6</code>, read-only diagnostics as far as AMS_Py is concerned). Same column-for-column schema on both applications: <code>specimen, code2, etape, k11, k22, k33, k12, k23, k13, s(SI*1e-5), n_positions, sigma, ftest, ftest12, ftest23, quality, info</code> — raw (not trace-normalized) tensor components, in the specimen frame.</p>
+      <p style="color:var(--ink-soft); max-width:68ch;">Marked by the header line <code>#specimen tensor results</code>. One row per tensor variant — <code>code2</code> distinguishes <code>A0</code>/<code>F0</code> (STARpaleomag_Py, TRM/ARM anisotropy) from <code>N0</code> (AMS_Py, bulk susceptibility) and the 14 STARpaleomag_Py jackknife variants (<code>A+</code>/<code>A-</code>/<code>A1</code>…<code>B6</code>, read-only diagnostics as far as AMS_Py is concerned). Same column-for-column schema on both applications: <code>specimen, code2, etape, k11, k22, k33, k12, k23, k13, s(SI*1e-5), n_positions, sigma, ftest, ftest12, ftest23, quality, field_Am, export, info</code> — raw (not trace-normalized) tensor components, in the specimen frame. <code>field_Am</code> is the applied field (A/m) recorded by <strong>Archive ASC into .pmagani…</strong> when the report gives it (the MFK2 kappabridge can measure the same specimen at several field strengths); <code>export</code> (<code>Y</code>/<code>N</code>) is set by <strong>Mark selection for MagIC export…</strong>. A file written before either column existed is still read correctly — both default to "not set"/<code>Y</code>.</p>
 
       <h3 class="group" id="pmagani-mean">Site mean section</h3>
       <p style="color:var(--ink-soft); max-width:68ch;">Marked by the header line <code>#site mean tensor results</code>, always at the end of the file — a new specimen row is inserted <em>before</em> this marker if it already exists, never appended after it, so the two sections never get interleaved. Deliberately a <em>different</em> schema from the specimen section, not raw tensor components: principal axes (k1≥k2≥k3, Jelinek convention) with dec/inc and 95% confidence half-angles per axis, plus the shape parameters.</p>
@@ -722,7 +730,9 @@
             <tr><td>dec1, inc1 … dec3, inc3</td><td>declination/inclination of each principal axis</td></tr>
             <tr><td>alpha1_1, alpha2_1 …</td><td>95% confidence half-angles (major/minor) around each axis, Jelinek (1978)</td></tr>
             <tr><td>P, T, L, F, Pprim</td><td>shape parameters of the mean tensor</td></tr>
-            <tr><td>info</td><td>free text — carries the orientation this mean was computed in (<code>tilt_correction: -1/0/100</code>, the same MagIC-style code used for <code>aniso_tilt_correction</code>) since the column schema itself has no dedicated orientation field</td></tr>
+            <tr><td>tilt_correction</td><td>orientation this mean was computed in, MagIC-style code (<code>-1</code>/<code>0</code>/<code>100</code> = Sample/In situ/Tilt corrected) — a dedicated column; older files that only ever noted this in free-text <code>info</code> are still read (falls back to "unknown")</td></tr>
+            <tr><td>export</td><td><code>Y</code>/<code>N</code> — set by <strong>Mark selection for MagIC export…</strong>, same meaning as the specimen section's own <code>export</code> column</td></tr>
+            <tr><td>info</td><td>free text note</td></tr>
           </tbody>
         </table>
       </div>

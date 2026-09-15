@@ -35,6 +35,7 @@ from ams_selection import (
     read_ani_mean_results_from_pmagani,
     is_imaginary_component,
     mark_pmagani_export,
+    create_empty_pmagani_if_missing,
     _ORIENT_TO_FILE_CODE,
 )
 from ams_prmag import read_prmag_specimens, ani_path_for
@@ -535,8 +536,23 @@ class AmsApp:
             if missing:
                 self._afficher(self._format_missing_prmag_warning(missing))
         else:
-            self._afficher(f"no companion .pmagani/.ANI file found ({candidate}) - "
-                            f"open one manually with 'Open File .pmagani...'.\n")
+            # Ni .pmagani ni ancien .ANI : en cree un vide - demande
+            # explicite utilisateur ("dans AMS_Py quand on ouvre un
+            # .prmag, si il n'y a pas de pmagani, en creer un vide"),
+            # meme principe que STARpaleomag_Py/field_notes.
+            # write_prmag_from_field_notes (compagnon cree des la
+            # creation du .prmag) - ici a l'OUVERTURE cote AMS_Py, pour
+            # le cas d'un .prmag deja existant (cree par une version
+            # anterieure, ou par une autre voie) sans .pmagani associe.
+            # `candidate` est encore ani_path_for(path) a ce stade (le
+            # seul cas ou on atteint ce else) - devient directement le
+            # fichier actif (self.ani_path), pret pour "Archive ASC into
+            # .pmagani..." sans dialogue de fichier supplementaire.
+            create_empty_pmagani_if_missing(candidate)
+            self.donnees = []
+            self.ani_path = candidate
+            self.selection = []
+            self._afficher(f"no companion .pmagani/.ANI file found - created an empty one: {candidate}\n")
 
     def ouvrir_import_legacy_ani_dialog(self):
         """Convertit un ANCIEN fichier .ANI (format list-directed Fortran,

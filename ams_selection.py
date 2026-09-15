@@ -361,6 +361,30 @@ def _insert_pmagani_line(path: str, line: str, is_mean: bool) -> None:
         f.write("\n".join(lines) + "\n")
 
 
+def create_empty_pmagani_if_missing(path: str) -> bool:
+    """Cree un .pmagani VIDE (juste l'en-tete, section specimen sans
+    aucune ligne de donnees) si `path` n'existe pas deja - MEME fonction
+    que STARpaleomag_Py/calcul.create_empty_pmagani_if_missing (format de
+    fichier partage) - demande explicite utilisateur ("dans AMS_Py quand
+    on ouvre un .prmag, si il n'y a pas de pmagani, en creer un vide") :
+    pret a etre archive dedans ("Archive ASC into .pmagani...") sans
+    devoir d'abord importer un .asc/.ANI pour qu'il existe. NE FAIT RIEN
+    si le fichier existe deja (jamais ecrase). Retourne True si le
+    fichier a ete cree, False s'il existait deja."""
+    if os.path.exists(path):
+        return False
+    lines = [
+        "# pmagani v2 - companion of .prmag/.pmagres, join key = specimen "
+        "(specimen section) / site (site mean section)",
+        _PMAGANI_UNITS_NOTE.rstrip("\n"),
+        _ANI_SPECIMEN_HEADER,
+        "\t".join(_PMAGANI_HEADER),
+    ]
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        f.write("\n".join(lines) + "\n")
+    return True
+
+
 def _format_pmagani_mean_line(
     site: str, code2: str, result: "TensorialMeanResult", orientation: int, info: str = "",
 ) -> str:

@@ -525,47 +525,33 @@
       <h2>AMS Files <span class="menu-tag">files</span></h2>
       <p class="menu-desc">Load data, convert legacy formats, export to MagIC.</p>
 
-      <div class="item">
+      <div class="item" id="files-open">
         <div class="label">Open File .pmagani… <span class="shortcut">Cmd+O</span></div>
-        <div class="desc">Loads a <code>.pmagani</code> file directly (or an old-style <code>.ANI</code>, read as-is). If opened this way rather than via <strong>Open File .prmag…</strong>, AMS_Py also looks for a companion <code>.prmag</code> of the same base name and loads it automatically, so site/sample lookups for MagIC export work either way round.</div>
+        <div class="desc">Loads a <code>.pmagani</code> file directly (or an old-style <code>.ANI</code>, read as-is). If opened this way rather than via <strong>Open File .prmag…</strong>, AMS_Py also looks for a companion <code>.prmag</code> of the same base name and loads it automatically, so site/sample lookups work either way round.</div>
       </div>
       <div class="item">
         <div class="label">Open File .prmag…</div>
-        <div class="desc">Loads a <code>.prmag</code> file (STARpaleomag_Py's own format) and automatically locates and loads its companion <code>.pmagani</code>. This is the recommended way in — it guarantees the site/sample lookup needed by <strong>Export to Magic</strong> is available from the start. If neither a <code>.pmagani</code> nor an old <code>.ANI</code> companion exists yet, an empty <code>.pmagani</code> (header only) is created and made the active file automatically — ready for <strong>Archive ASC into .pmagani…</strong> without an extra file dialog.</div>
+        <div class="desc">Loads a <code>.prmag</code> file (STARpaleomag_Py's own format) and automatically locates and loads its companion <code>.pmagani</code>. This is the recommended way in — it guarantees site/sample metadata (used by <strong>Stereographic site</strong>, and by STARpaleomag_Py's own unified MagIC export once this <code>.pmagani</code> is picked up there) is available from the start. If neither a <code>.pmagani</code> nor an old <code>.ANI</code> companion exists yet, an empty <code>.pmagani</code> (header only) is created and made the active file automatically — ready for <strong>Archive ASC into .pmagani…</strong> without an extra file dialog.</div>
       </div>
       <div class="item">
         <div class="label">List File .pmagani</div>
         <div class="desc">Prints every raw tensor currently loaded — the six components as stored, one line per measurement, not the eigen-decomposition (that's <strong>List measurements</strong> below).</div>
       </div>
-      <div class="item">
+      <div class="item" id="files-legacy">
         <div class="label">Import legacy .ANI to .pmagani…</div>
         <div class="desc">Converts an old-style <code>.ANI</code> file (list-directed Fortran output, no column headers) to the current tab-separated <code>.pmagani</code> format with a proper header row. A one-time upgrade — the old file is untouched.</div>
-      </div>
-      <div class="item">
-        <div class="label">Archive ASC into .pmagani…</div>
-        <div class="desc">Reads an AGICO Kappabridge <code>.asc</code> report (the instrument's own SUSAR/Anisoft software output) and <strong>appends</strong> only the specimens not already present (matched on specimen id + code2 + applied field — see below) into an existing <code>.pmagani</code>, rather than regenerating the whole file: a lab's <code>.asc</code> grows over weeks as new specimens are measured, and re-running this on the same growing file must never wipe out site means or export markers already curated in the meantime. If a <code>.pmagani</code> is already the active file, it archives straight into it with no extra dialog — and afterward, any newly-archived specimen with no matching entry in the companion <code>.prmag</code> is flagged (a mismatched file or a typo, most likely). New tensors are tagged <code>code2=N0</code>; orientation (<code>cin</code>/<code>caz</code>/<code>dip</code>/<code>str</code>), Hext statistics (err.%, F, F12, F23), and the applied field (A/m, <code>field_Am</code> column) are carried straight through whenever the report includes them — the MFK2 kappabridge in particular can measure one specimen at several field strengths, each kept as its own row rather than overwriting the previous measurement.</div>
       </div>
       <div class="item">
         <div class="label">Create prmag from legacy .ANI…</div>
         <div class="desc">Builds a <code>.prmag</code> straight from an old <code>.ANI</code>'s own core-orientation columns (<code>cin</code>/<code>caz</code>/<code>dip</code>/<code>str</code>) — useful when the original field notes are lost but an old <code>.ANI</code> with orientation data survives. Deduplicates by specimen id first: a real ATRM specimen repeats once per jackknife variant (<code>A0</code>/<code>A+</code>/<code>A-</code>/<code>A1</code>/<code>B1</code>…<code>B6</code>, up to 15 rows) in a legacy <code>.ANI</code>, all sharing the same orientation — only the first is kept. Also converts the same <code>.ANI</code> into the companion <code>.pmagani</code> in the same step (the tensor data is already there, no reason to leave it empty), unless one already exists under that name.</div>
       </div>
-      <div class="item">
+      <div class="item" id="files-archive">
+        <div class="label">Archive ASC into .pmagani…</div>
+        <div class="desc">Reads an AGICO Kappabridge <code>.asc</code> report (the instrument's own SUSAR/Anisoft software output) and <strong>appends</strong> only the specimens not already present (matched on specimen id + code2 + applied field — see below) into an existing <code>.pmagani</code>, rather than regenerating the whole file: a lab's <code>.asc</code> grows over weeks as new specimens are measured, and re-running this on the same growing file must never wipe out site means or export markers already curated in the meantime. If a <code>.pmagani</code> is already the active file, it archives straight into it with no extra dialog — and afterward, any newly-archived specimen with no matching entry in the companion <code>.prmag</code> is flagged (a mismatched file or a typo, most likely). New tensors are tagged <code>code2=N0</code>; orientation (<code>cin</code>/<code>caz</code>/<code>dip</code>/<code>str</code>), Hext statistics (err.%, F, F12, F23), and the applied field (A/m, <code>field_Am</code> column) are carried straight through whenever the report includes them — the MFK2 kappabridge in particular can measure one specimen at several field strengths, each kept as its own row rather than overwriting the previous measurement.</div>
+      </div>
+      <div class="item" id="files-export">
         <div class="label">Mark selection for MagIC export…</div>
-        <div class="desc">Takes whatever is currently built up in <strong>AMS data</strong>'s selection and/or <strong>Mean Results</strong>' working list, and treats it as the <em>complete</em> desired export set for the active <code>.pmagani</code>: every specimen/mean in that set is marked <code>export=Y</code>, every other row in the same file <code>export=N</code> — a replace, not an add. STARpaleomag_Py's own <strong>Export to Magic</strong> then skips any row marked <code>export=N</code> when it reads this same file, so curating a subset here is enough to control what the other application exports, without a separate intermediate file.</div>
-      </div>
-      <div class="item">
-        <div class="label">Export to Magic</div>
-        <div class="desc">Exports every <code>A0</code>/<code>F0</code>/<code>N0</code> tensor in memory as one MagIC <code>specimens.txt</code> row each — trace-normalized <code>aniso_s</code> (<code>s1:s2:s3:s4:s5:s6</code>, summing to 1) plus the matching experiment type: <code>N0</code>→<code>AMS</code>/<code>LP-X</code>, <code>A0</code>→<code>ATRM</code>/<code>LP-AN-TRM</code>, <code>F0</code>→<code>AARM</code>/<code>LP-AN-ARM</code>. Also writes <code>aniso_s_n_measurements</code>/<code>aniso_s_sigma</code>/<code>aniso_ftest</code>/<code>aniso_ftest12</code>/<code>aniso_ftest23</code>/<code>aniso_ftest_quality</code> when the tensor carries Hext statistics, and <code>aniso_tilt_correction="-1"</code> (specimen coordinates — the tensor is exported raw, not reoriented). Site/sample come from the companion <code>.prmag</code>; a specimen with no match is still exported, with those two fields left blank rather than guessed.</div>
-      </div>
-      <div class="item">
-        <div class="label">Export site means to Magic (sites.txt)…</div>
-        <div class="desc">Exports <code>self.mean_results</code> (tensors already computed via <strong>Tensorial mean</strong>, or loaded from a <code>.pmagani</code>'s site-mean section via <strong>Select results</strong>) as one MagIC <code>sites.txt</code> row each — <code>aniso_v1</code>/<code>v2</code>/<code>v3</code> (principal axes as tau:dec:inc:eta/zeta:… Matrix columns), the shape parameters (<code>aniso_p</code>/<code>l</code>/<code>f</code>/<code>t</code>/<code>pp</code>/<code>perc</code>/<code>total</code>/<code>ll</code>/<code>ff</code>/<code>vg</code>/<code>fl</code>), and <code>aniso_tilt_correction</code> derived from the result's own recorded orientation (Sa→<code>-1</code>, IS→<code>0</code>, TC→<code>100</code>). A result whose id doesn't resolve to a single site (mixes specimens from more than one) is skipped and listed in the summary rather than exported under a guessed site name.
-          <div class="callout" style="margin-top:0.6rem;"><strong>eta/zeta caveat.</strong> AMS_Py points eta/zeta toward the <em>other</em> eigenvectors with Jelinek (1978) confidence semi-angles (from <code>Tensorial mean</code>'s own ellipse) — not the pairwise Hext (1963) e12/e13/e23 angles that PmagPy's own AARM/ATRM pipeline computes separately for a 6-position specimen fit. Documented explicitly in each row's <code>description</code> column rather than presented as an equivalence.</div>
-        </div>
-      </div>
-      <div class="item">
-        <div class="label">Export list to Excel <span class="badge-todo">not ported</span></div>
-        <div class="desc">Not yet implemented.</div>
+        <div class="desc">Takes whatever is currently built up in <strong>AMS data</strong>'s selection and/or <strong>Mean Results</strong>' working list, and treats it as the <em>complete</em> desired export set for the active <code>.pmagani</code>: every specimen/mean in that set is marked <code>export=Y</code>, every other row in the same file <code>export=N</code> — a replace, not an add. STARpaleomag_Py's own unified MagIC export then skips any row marked <code>export=N</code> when it reads this same file, so curating a subset here is enough to control what gets exported, without a separate intermediate file.</div>
       </div>
     </section>
 
@@ -574,7 +560,7 @@
       <h2>AMS data <span class="menu-tag">selection &amp; orientation</span></h2>
       <p class="menu-desc">Build a working selection of measurements, and choose the coordinate frame everything else computes in.</p>
 
-      <div class="item">
+      <div class="item" id="data-list">
         <div class="label">Select measurements <span class="shortcut">Cmd+E</span></div>
         <div class="desc">Adds matching measurements to the current selection by specimen name (wildcards accepted). <strong>Accumulates</strong> on top of whatever is already selected rather than replacing it — the same behavior as the original Fortran <code>selmes</code>, which only ever grows the list; only <strong>init list to zero</strong> clears it. This lets you build up a selection spanning several specimens (or several separate picks of the same specimen) across multiple calls.</div>
       </div>
@@ -584,9 +570,9 @@
       </div>
       <div class="item">
         <div class="label">List measurements with depth <span class="badge-todo">not ported</span></div>
-        <div class="desc">Not yet implemented.</div>
+        <div class="desc">Not yet implemented — planned to use the depth field already present in specimen characteristics.</div>
       </div>
-      <div class="item">
+      <div class="item" id="data-edit">
         <div class="label">init list to zero <span class="shortcut">Cmd+I</span></div>
         <div class="desc">Clears the current selection. The only thing that does — see <strong>Select measurements</strong> above.</div>
       </div>
@@ -594,7 +580,7 @@
         <div class="label">Delete lines <span class="shortcut">Cmd+D</span></div>
         <div class="desc">Removes one or more measurements from the current selection by line number, after listing them.</div>
       </div>
-      <div class="item">
+      <div class="item" id="data-orient">
         <div class="label">Sample coordinates <span class="shortcut">Cmd+Ctrl+A</span></div>
         <div class="desc">Raw specimen frame — no reorientation applied. Every tensor computation and plot uses whichever of these three is active.</div>
       </div>
@@ -613,7 +599,7 @@
       <h2>Mean Results <span class="menu-tag">working list of tensorial means</span></h2>
       <p class="menu-desc">A separate in-memory list of already-computed site-mean tensors (<code>self.mean_results</code>) — distinct from the raw-measurement selection in AMS&nbsp;data, and from the site-mean section of a <code>.pmagani</code> file on disk. These commands move results between the two.</p>
 
-      <div class="item">
+      <div class="item" id="results-manage">
         <div class="label">Select results</div>
         <div class="desc">Loads mean tensors already saved in the <em>currently open</em> <code>.pmagani</code>'s site-mean section into the working list. Filtered to the <strong>exact</strong> orientation currently active in AMS&nbsp;data — Sample/In&nbsp;situ/Tilt&nbsp;cor. results are never mixed together in one selection, since only In&nbsp;situ and Tilt&nbsp;corrected share a common (geographic) reference frame in principle, and even that turned out not to be a safe assumption to build a filter on.</div>
       </div>
@@ -637,10 +623,6 @@
         <div class="label">save results in File</div>
         <div class="desc">Writes the entire working list into the currently open <code>.pmagani</code>'s site-mean section. Always pauses first for a Y/n confirmation, whatever the tensor's own Hext significance — the point is to make sure the numbers get looked at before being written, not to gate saving on the F-test verdict.</div>
       </div>
-      <div class="item">
-        <div class="label">Correction sondage</div>
-        <div class="desc">Borehole/core reorientation, two methods: (1) recompute each measurement's azimuth from its own k3 (minor) axis declination — orients remanence data using the magnetic foliation itself; or (2) read an external azimuth-correction file (specimen id, correction in degrees) and subtract it from each measurement's azimuth — orients AMS data using an already-known remanence direction. Modifies the current selection in place.</div>
-      </div>
     </section>
 
     <!-- ========================= CALCUL ========================= -->
@@ -648,29 +630,25 @@
       <h2>Calcul <span class="menu-tag">tensor statistics</span></h2>
       <p class="menu-desc">Compute a tensorial mean, correct a paleomagnetic direction for anisotropy, and combine or compare tensors.</p>
 
-      <div class="item">
+      <div class="item" id="calcul-tsmean">
         <div class="label">Tensorial mean <span class="shortcut">Cmd+M</span></div>
         <div class="desc">Jelinek (1978) tensorial mean of the current selection (at least 3 measurements, in the currently active orientation): eigenvalues, dec/inc of each principal axis, and their 95% confidence ellipses. Shape parameters (L/F/P/P′/T) verified byte-for-byte against a real MagIC contribution's own <code>magicams.txt</code>.
           <div class="callout" style="margin-top:0.6rem;"><strong>Isotropic tensors are excluded</strong> from the mean automatically (classified via the same Fortran thresholds, kept exact including their asymmetry) — <code>self.mean_results</code>'s reported <code>n</code> is the count actually used, which can be less than the selection size.</div>
         </div>
       </div>
-      <div class="item">
+      <div class="item" id="calcul-msus">
         <div class="label">Mean susceptibility</div>
         <div class="desc">Arithmetic and geometric mean (plus geometric standard deviation) of the bulk susceptibility across the selection — needs at least 3 measurements. Uses the <em>k2</em> eigenvalue of the de-normalized tensor rather than the scalar <code>s</code> directly, matching the original routine's own convention.</div>
       </div>
-      <div class="item">
+      <div class="item" id="calcul-fisher">
         <div class="label">Fisher 3 axes <span class="badge-todo">not ported</span></div>
         <div class="desc">Not yet implemented.</div>
-      </div>
-      <div class="item">
-        <div class="label">Great circle <span class="badge-todo">stub in the original Fortran too</span></div>
-        <div class="desc">The original Fortran routine is itself an empty stub — nothing to port.</div>
       </div>
       <div class="item">
         <div class="label">ellipses Bootstrap</div>
         <div class="desc">The original Fortran routine (<code>bootams</code>) is an empty stub too, so this is new work rather than a port: non-parametric bootstrap (parametric optional) on the current selection, fitting a Kent distribution (zeta/eta) to the resampled eigenvectors via PmagPy's own <code>pmag.s_boot</code>/<code>sbootpars</code> — a genuinely different method from the Jelinek ellipse computed by <strong>Tensorial mean</strong>, not a replacement for it. Needs at least 3 measurements; prompts for the number of draws and whether to plot the resampled cloud, the fitted ellipse, or both.</div>
       </div>
-      <div class="item">
+      <div class="item" id="calcul-corr">
         <div class="label">Inverse correction</div>
         <div class="desc">Corrects a paleomagnetic direction for anisotropy using the <strong>first</strong> tensor in the current selection — a direct port of <code>corpaldir</code>, which the original Fortran's own prompt already warns about ("attention prend le premier tenseur de la liste").</div>
       </div>
@@ -685,7 +663,7 @@
       <h2>Graphics <span class="menu-tag">plots</span></h2>
       <p class="menu-desc">Stereographic projections, shape diagrams, and SVG export.</p>
 
-      <div class="item">
+      <div class="item" id="graphics-stereo">
         <div class="label">Stereographique <span class="shortcut">Cmd+Ctrl+S</span></div>
         <div class="desc">Principal axes (k1/k2/k3) of the raw selection and/or already-computed mean tensors, prompted the same way as <strong>Anisotropy parameters</strong> below (data/results/both). Mean-result symbols are drawn twice the size of individual measurements to tell them apart, with their 95% confidence ellipses — the part that exits the lower hemisphere is drawn dashed in the upper hemisphere, folded back onto the same azimuth rather than projected outside the primitive circle.</div>
       </div>
@@ -697,15 +675,19 @@
         <div class="label">parametres projection</div>
         <div class="desc">Stereographic vs. equal-area (Lambert) projection, and whether negative inclinations are inverted onto the primitive circle rather than plotted with a distinct open symbol. The custom projection radius the original Fortran also prompts for is not asked here — it's a confirmed real bug in the source (<code>rdim</code> is silently ignored, always 15.0, whatever's typed), not worth reproducing.</div>
       </div>
-      <div class="item">
+      <div class="item" id="graphics-aniso">
         <div class="label">Anisotropy parameters <span class="shortcut">Cmd+Ctrl+P</span></div>
         <div class="desc">Flinn diagram and T–P′ diagram together on one page — a single menu entry replacing what used to be two separate Fortran ones. Source is prompted the same way as <strong>Stereographique</strong>: raw data (0), already-computed mean results (1), or both (2). Specimen ids are annotated next to points only below 15 measurements, to avoid clutter.</div>
       </div>
-      <div class="item">
-        <div class="label">AMS &gt;&gt; GMT files <span class="badge-todo">stub in the original Fortran too</span></div>
-        <div class="desc">The original Fortran routine is itself an empty stub — nothing to port.</div>
+      <div class="item" id="graphics-shape">
+        <div class="label">Susceptibility / anisotropy degree <span class="badge-new">new</span></div>
+        <div class="desc">One point per raw measurement in the current selection (no data/results/both prompt — a mean tensor has no individual bulk susceptibility to plot). Two stacked panels, both against P′ (Jelinek's corrected anisotropy degree) on Y: bottom panel (<em>Real</em>) plots susceptibility on a normal log scale; top panel (<em>Imaginary</em>) plots <code>|susceptibility|</code> on a log scale with the X axis <strong>reversed</strong> — negative (imaginary) values grow toward the left.</div>
       </div>
       <div class="item">
+        <div class="label">Im vs Re susceptibility <span class="badge-new">new</span></div>
+        <div class="desc">One point per specimen in the current selection that has <strong>both</strong> a Real and an Imaginary susceptibility measurement (scalar, orientation-independent — no orientation prompt). X axis is split at a vertical divider: negative (imaginary) K to the left, <code>|K|</code> on a reversed log scale; positive K to the right, on a normal log scale — independent scales either side. Y (Real susceptibility) is log-scaled and shared across both halves.</div>
+      </div>
+      <div class="item" id="graphics-svg">
         <div class="label">Export SVG…</div>
         <div class="desc">Exports whichever plot is currently displayed to an SVG file — matplotlib writes it directly from the Figure, no separate export code needed. Works mid-loop, same as in STARpaleomag_Py: nothing stops you from using it while a batch dialog (<strong>Stereographic sample</strong>, for instance) is paused waiting for your next input — the menu stays fully clickable.</div>
       </div>

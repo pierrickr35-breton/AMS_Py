@@ -136,6 +136,12 @@ class AmsApp:
         self.prmag_path = None
         self.prmag_specimens = {}  # {specimen_id: PrmagSpecimen} - site/sample MagIC, voir ams_prmag
         self.orientation = tk.IntVar(value=2)  # 1=echantillon,2=in-situ,3=pendage corrige (defaut in-situ, comme iorient=2)
+        # Ancre du guide utilisateur correspondant au DERNIER item de menu
+        # invoque (voir _menu_cmd/ouvrir_user_guide, meme mecanisme que
+        # STARpaleomag_Py/app.py) - None tant qu'aucun menu de contenu n'a
+        # encore ete utilise, auquel cas le guide s'ouvre sur sa page
+        # d'accueil.
+        self._help_anchor = None
         self.mean_results = []  # [(orientation, TensorialMeanResult), ...] - equivalent minimal de amsres (Mean Results, pas encore porte en menu complet)
         self._current_graphic = None
         self.ams_iproj = 0  # 'paramster' : 0=lambert/equiaire (defaut Fortran), 1=stereographique
@@ -312,86 +318,135 @@ class AmsApp:
         jamais invoquer la commande Tcl, court-circuitant bind_all)."""
         return f"{text}    ({SHORTCUTS[shortcut_name][0]})"
 
+    def _menu_cmd(self, anchor, func):
+        """Enveloppe `func` (la vraie commande d'un item de menu) pour
+        enregistrer `anchor` comme dernier contexte d'aide AVANT de
+        l'executer - meme mecanisme que STARpaleomag_Py/app._menu_cmd.
+        `anchor` correspond a l'id du BLOC (separateur a separateur) dans
+        help/AMS_Py_Guide.html ; plusieurs items d'un meme bloc partagent
+        la meme ancre."""
+        def wrapped(*args, **kwargs):
+            self._help_anchor = anchor
+            return func(*args, **kwargs)
+        return wrapped
+
     def _setup_menu(self):
         menubar = tk.Menu(self.root)
 
         files_menu = tk.Menu(menubar, tearoff=0)
-        files_menu.add_command(label=self._labeled("Open File .pmagani...", "openani"), command=self.ouvrir_ani_dialog)
-        files_menu.add_command(label="Open File .prmag...", command=self.ouvrir_prmag_dialog)
-        files_menu.add_command(label="List File .pmagani", command=self.lister_fichier_ani)
-        files_menu.add_separator()
-        files_menu.add_command(label="Import legacy .ANI to .pmagani...", command=self.ouvrir_import_legacy_ani_dialog)
-        files_menu.add_command(label="Archive ASC into .pmagani...", command=self.ouvrir_archiver_asc_dialog)
         files_menu.add_command(
-            label="Create prmag from legacy .ANI...", command=self.ouvrir_creer_prmag_from_ani_dialog)
-        files_menu.add_separator()
-        files_menu.add_command(label="Export to Magic", command=self.exporter_magic_dialog)
+            label=self._labeled("Open File .pmagani...", "openani"),
+            command=self._menu_cmd("files-open", self.ouvrir_ani_dialog))
         files_menu.add_command(
-            label="Export site means to Magic (sites.txt)...",
-            command=self.ouvrir_export_site_means_magic_dialog)
+            label="Open File .prmag...", command=self._menu_cmd("files-open", self.ouvrir_prmag_dialog))
+        files_menu.add_command(
+            label="List File .pmagani", command=self._menu_cmd("files-open", self.lister_fichier_ani))
+        files_menu.add_separator()
+        files_menu.add_command(
+            label="Import legacy .ANI to .pmagani...",
+            command=self._menu_cmd("files-legacy", self.ouvrir_import_legacy_ani_dialog))
+        files_menu.add_command(
+            label="Create prmag from legacy .ANI...",
+            command=self._menu_cmd("files-legacy", self.ouvrir_creer_prmag_from_ani_dialog))
+        files_menu.add_separator()
+        files_menu.add_command(
+            label="Archive ASC into .pmagani...",
+            command=self._menu_cmd("files-archive", self.ouvrir_archiver_asc_dialog))
+        files_menu.add_separator()
         files_menu.add_command(
             label="Mark selection for MagIC export...",
-            command=self.ouvrir_marquer_export_dialog)
-        files_menu.add_separator()
-        files_menu.add_command(label="Export list to Excel", command=lambda: self._not_implemented("Export list to Excel"))
+            command=self._menu_cmd("files-export", self.ouvrir_marquer_export_dialog))
         menubar.add_cascade(label="AMS Files", menu=files_menu)
 
         data_menu = tk.Menu(menubar, tearoff=0)
-        data_menu.add_command(label=self._labeled("Select measurements", "selmes"), command=self.selectionner_mesures)
-        data_menu.add_command(label=self._labeled("List measurements", "lismes"), command=self.lister_mesures)
+        data_menu.add_command(
+            label=self._labeled("Select measurements", "selmes"),
+            command=self._menu_cmd("data-list", self.selectionner_mesures))
+        data_menu.add_command(
+            label=self._labeled("List measurements", "lismes"),
+            command=self._menu_cmd("data-list", self.lister_mesures))
+        data_menu.add_command(
+            label="List measurements with depth",
+            command=self._menu_cmd("data-list", lambda: self._not_implemented("List measurements with depth")))
         data_menu.add_separator()
-        data_menu.add_command(label="List measurements with depth", command=lambda: self._not_implemented("List measurements with depth"))
+        data_menu.add_command(
+            label=self._labeled("init list to zero", "initmes"),
+            command=self._menu_cmd("data-edit", self.reinitialiser_liste))
+        data_menu.add_command(
+            label=self._labeled("Delete lines", "delmes"),
+            command=self._menu_cmd("data-edit", self.supprimer_lignes))
         data_menu.add_separator()
-        data_menu.add_command(label=self._labeled("init list to zero", "initmes"), command=self.reinitialiser_liste)
-        data_menu.add_command(label=self._labeled("Delete lines", "delmes"), command=self.supprimer_lignes)
-        data_menu.add_separator()
-        data_menu.add_radiobutton(label=self._labeled("Sample coordinates", "selce"), variable=self.orientation, value=1,
-                                   command=self.changer_orientation)
-        data_menu.add_radiobutton(label=self._labeled("In situ coordinates", "selis"), variable=self.orientation, value=2,
-                                   command=self.changer_orientation)
-        data_menu.add_radiobutton(label=self._labeled("Tilt corrected coordinates", "selcp"), variable=self.orientation, value=3,
-                                   command=self.changer_orientation)
+        data_menu.add_radiobutton(
+            label=self._labeled("Sample coordinates", "selce"), variable=self.orientation, value=1,
+            command=self._menu_cmd("data-orient", self.changer_orientation))
+        data_menu.add_radiobutton(
+            label=self._labeled("In situ coordinates", "selis"), variable=self.orientation, value=2,
+            command=self._menu_cmd("data-orient", self.changer_orientation))
+        data_menu.add_radiobutton(
+            label=self._labeled("Tilt corrected coordinates", "selcp"), variable=self.orientation, value=3,
+            command=self._menu_cmd("data-orient", self.changer_orientation))
         menubar.add_cascade(label="AMS data", menu=data_menu)
 
         results_menu = tk.Menu(menubar, tearoff=0)
-        results_menu.add_command(label="Select results", command=self.ouvrir_selres_dialog)
-        results_menu.add_command(label="List results", command=self.ouvrir_lisresmem_dialog)
-        results_menu.add_command(label="init list results", command=self.ouvrir_initres_dialog)
-        results_menu.add_command(label="delete result", command=self.ouvrir_delres_dialog)
-        results_menu.add_command(label="Liste results file", command=self.ouvrir_lisresfich_dialog)
-        results_menu.add_command(label="save results in File", command=self.ouvrir_sauveresfich_dialog)
-        results_menu.add_command(label="Correction sondage", command=self.ouvrir_corsondage_dialog)
+        results_menu.add_command(
+            label="Select results", command=self._menu_cmd("results-manage", self.ouvrir_selres_dialog))
+        results_menu.add_command(
+            label="List results", command=self._menu_cmd("results-manage", self.ouvrir_lisresmem_dialog))
+        results_menu.add_command(
+            label="init list results", command=self._menu_cmd("results-manage", self.ouvrir_initres_dialog))
+        results_menu.add_command(
+            label="delete result", command=self._menu_cmd("results-manage", self.ouvrir_delres_dialog))
+        results_menu.add_command(
+            label="Liste results file", command=self._menu_cmd("results-manage", self.ouvrir_lisresfich_dialog))
+        results_menu.add_command(
+            label="save results in File", command=self._menu_cmd("results-manage", self.ouvrir_sauveresfich_dialog))
         menubar.add_cascade(label="Mean Results", menu=results_menu)
 
         calcul_menu = tk.Menu(menubar, tearoff=0)
-        calcul_menu.add_command(label=self._labeled("Tensorial mean", "tsmean"), command=self.ouvrir_tsmean_dialog)
-        calcul_menu.add_command(label="Mean susceptibility", command=self.ouvrir_mds_dialog)
+        calcul_menu.add_command(
+            label=self._labeled("Tensorial mean", "tsmean"),
+            command=self._menu_cmd("calcul-tsmean", self.ouvrir_tsmean_dialog))
         calcul_menu.add_separator()
-        calcul_menu.add_command(label="Fisher 3 axes", command=lambda: self._not_implemented("Fisher 3 axes"))
-        calcul_menu.add_command(label="Great circle", command=lambda: self._not_implemented("Great circle (stub in the original Fortran too)"))
+        calcul_menu.add_command(
+            label="Mean susceptibility", command=self._menu_cmd("calcul-msus", self.ouvrir_mds_dialog))
         calcul_menu.add_separator()
-        calcul_menu.add_command(label="ellipses Bootstrap", command=self.ouvrir_bootstrap_dialog)
+        calcul_menu.add_command(
+            label="Fisher 3 axes",
+            command=self._menu_cmd("calcul-fisher", lambda: self._not_implemented("Fisher 3 axes")))
+        calcul_menu.add_command(
+            label="ellipses Bootstrap", command=self._menu_cmd("calcul-fisher", self.ouvrir_bootstrap_dialog))
         calcul_menu.add_separator()
-        calcul_menu.add_command(label="Inverse correction", command=self.ouvrir_corpaldir_dialog)
-        calcul_menu.add_separator()
-        calcul_menu.add_command(label="Substraction of tensors", command=self.ouvrir_soustract_dialog)
+        calcul_menu.add_command(
+            label="Inverse correction", command=self._menu_cmd("calcul-corr", self.ouvrir_corpaldir_dialog))
+        calcul_menu.add_command(
+            label="Substraction of tensors", command=self._menu_cmd("calcul-corr", self.ouvrir_soustract_dialog))
         menubar.add_cascade(label="Calcul", menu=calcul_menu)
 
         graphics_menu = tk.Menu(menubar, tearoff=0)
-        graphics_menu.add_command(label=self._labeled("Stereographique", "stereo"), command=self.afficher_stereo)
-        graphics_menu.add_command(label="Stereographic sample", command=self.ouvrir_stereo_sample_dialog)
-        graphics_menu.add_command(label="Stereographic site", command=self.ouvrir_stereo_site_dialog)
-        graphics_menu.add_command(label="parametres projection", command=self.ouvrir_paramster_dialog)
+        graphics_menu.add_command(
+            label=self._labeled("Stereographique", "stereo"),
+            command=self._menu_cmd("graphics-stereo", self.afficher_stereo))
+        graphics_menu.add_command(
+            label="Stereographic sample",
+            command=self._menu_cmd("graphics-stereo", self.ouvrir_stereo_sample_dialog))
+        graphics_menu.add_command(
+            label="Stereographic site", command=self._menu_cmd("graphics-stereo", self.ouvrir_stereo_site_dialog))
+        graphics_menu.add_command(
+            label="parametres projection", command=self._menu_cmd("graphics-stereo", self.ouvrir_paramster_dialog))
         graphics_menu.add_separator()
         graphics_menu.add_command(
-            label=self._labeled("Anisotropy parameters", "aniso"), command=self.afficher_anisotropy_parameters)
-        graphics_menu.add_command(
-            label="Susceptibility / anisotropy degree", command=self.afficher_susceptibility_anisotropy)
-        graphics_menu.add_command(
-            label="Im vs Re susceptibility", command=self.afficher_im_re_susceptibility)
-        graphics_menu.add_command(label="AMS >> GMT files", command=lambda: self._not_implemented("AMS >> GMT files (stub in the original Fortran too)"))
+            label=self._labeled("Anisotropy parameters", "aniso"),
+            command=self._menu_cmd("graphics-aniso", self.afficher_anisotropy_parameters))
         graphics_menu.add_separator()
-        graphics_menu.add_command(label="Export SVG...", command=self.exporter_svg)
+        graphics_menu.add_command(
+            label="Susceptibility / anisotropy degree",
+            command=self._menu_cmd("graphics-shape", self.afficher_susceptibility_anisotropy))
+        graphics_menu.add_command(
+            label="Im vs Re susceptibility",
+            command=self._menu_cmd("graphics-shape", self.afficher_im_re_susceptibility))
+        graphics_menu.add_separator()
+        graphics_menu.add_command(
+            label="Export SVG...", command=self._menu_cmd("graphics-svg", self.exporter_svg))
         menubar.add_cascade(label="Graphics", menu=graphics_menu)
 
         help_menu = tk.Menu(menubar, tearoff=0)
@@ -1397,12 +1452,20 @@ class AmsApp:
         systeme - equivalent de STARpaleomag_Py/app.ouvrir_user_guide (meme
         principe : un fichier HTML STATIQUE livre EN LOCAL avec l'appli,
         voir _resource_path, help/AMS_Py_Guide.html) - demande explicite
-        utilisateur ("is it possible to write a guide for AMS_Py")."""
+        utilisateur ("is it possible to write a guide for AMS_Py").
+
+        Saute directement au bloc du DERNIER menu de contenu utilise
+        (self._help_anchor, voir _menu_cmd) - ouvre la page d'accueil du
+        guide (aucune ancre) tant qu'aucun item de menu de contenu n'a
+        encore ete invoque dans cette session."""
         guide_path = _resource_path("help", "AMS_Py_Guide.html")
         if not os.path.exists(guide_path):
             self._showerror("Error", f"User guide not found:\n{guide_path}")
             return
-        webbrowser.open(f"file://{guide_path}")
+        url = f"file://{guide_path}"
+        if self._help_anchor:
+            url += f"#{self._help_anchor}"
+        webbrowser.open(url)
 
     def afficher_stereo(self):
         """Equivalent de `sterams`/`stereo`+`tratm` (menu Graphics >

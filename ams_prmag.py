@@ -18,7 +18,9 @@ STARpaleomag_Py/calcul.ani_path_for (memes basenames pour .prmag/.pmagres/.ANI).
 import os
 import re
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Dict, List, Optional, Tuple
+
+from ams_asc import parse_asc_file
 
 
 def ani_path_for(data_path: str) -> str:
@@ -200,6 +202,16 @@ def create_prmag_from_legacy_ani(
             site = _legacy_ani_sample_to_site(sample)
             records.append((specimen, sample, site, azimuth, dip, bed_dip_strike, bed_dip))
 
+    _write_prmag_records(prmag_path, records, volume)
+    return len(records)
+
+
+def _write_prmag_records(prmag_path: str, records, volume: float) -> None:
+    """Ecrit les blocs .prmag (mesures VIDES) communs a
+    create_prmag_from_legacy_ani et create_prmag_from_asc - factorise ici
+    plutot que duplique, les deux ne different QUE dans la source des
+    tuples (specimen, sample, site, azimuth, dip, bed_dip_strike,
+    bed_dip)."""
     with open(prmag_path, "w", encoding="utf-8", newline="\n") as f:
         for specimen, sample, site, azimuth, dip, bed_dip_strike, bed_dip in records:
             f.write(
@@ -225,4 +237,48 @@ def create_prmag_from_legacy_ani(
             )
             f.write("\n")  # separateur de bloc (voir read_prmag_specimens)
 
-    return len(records)
+
+def create_prmag_from_asc(
+    asc_path: str,
+    prmag_path: str,
+    volume: float = 10.80,
+) -> Tuple[int, List[str]]:
+    """Cree un .prmag STARpaleomag_Py (mesures VIDES) a partir des colonnes
+    d'orientation (cin/caz/dip/str_) d'un rapport .asc AGICO Kappabridge -
+    demande explicite utilisateur ("ajouter en dessous de create prmag &
+    pmagani from legacy .ANI : create prmag & pmagani from .asc AGICO
+    file"). Equivalent de create_prmag_from_legacy_ani mais lisant
+    directement un .asc plutot qu'un ancien .ANI (voir ams_asc.
+    parse_asc_file pour le detail du format) - MEME convention de
+    deduplication par specimen (un specimen ATRM/AARM reel repete une
+    ligne par variante jackknife A0/A+/A-/A1/B1...B6, toutes partageant
+    la meme orientation - seule la premiere rencontree est gardee) et
+    MEME mapping colonnes -> champs .prmag, puisque AMSMeasurement
+    partage deja les noms cin/caz/dip/str_ du format .ANI historique
+    (voir ams_selection.AMSMeasurement) : cin=dip/plunge du carottier,
+    caz=azimuth, dip=bed_dip, str_=bed_dip_strike.
+
+    Ne cree PAS le .pmagani compagnon lui-meme (contrairement a
+    create_prmag_from_legacy_ani, qui reutilise import_legacy_ani) :
+    l'appelant (app.ouvrir_creer_prmag_from_asc_dialog) le fait via
+    archive_asc_file directement sur le .pmagani cible, qui gere deja
+    l'archivage incremental (specimens deja presents, statistiques de
+    Hext) - reimplementer cette logique ici serait une duplication, pas
+    une simplification.
+
+    Retourne (nombre de specimens uniques ecrits, avertissements de
+    parse_asc_file - blocs du .asc ignores, ex. mal formes)."""
+    measurements, warnings = parse_asc_file(asc_path)
+    records = []
+    seen_specimens = set()
+    for m in measurements:
+        specimen = m.id.strip()
+        if not specimen or specimen in seen_specimens:
+            continue
+        seen_specimens.add(specimen)
+        sample = _legacy_ani_specimen_to_sample(specimen)
+        site = _legacy_ani_sample_to_site(sample)
+        records.append((specimen, sample, site, m.caz, m.cin, m.str_, m.dip))
+
+    _write_prmag_records(prmag_path, records, volume)
+    return len(records), warnings

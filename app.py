@@ -38,7 +38,7 @@ from ams_selection import (
     create_empty_pmagani_if_missing,
     _ORIENT_TO_FILE_CODE,
 )
-from ams_prmag import read_prmag_specimens, ani_path_for, create_prmag_from_legacy_ani
+from ams_prmag import read_prmag_specimens, ani_path_for, create_prmag_from_legacy_ani, create_prmag_from_asc
 from ams_asc import archive_asc_file
 from ams_calcul import correct_direction_with_tensor, subtract_tensors
 from ams_bootstrap import compute_bootstrap_mean, format_bootstrap_result
@@ -346,8 +346,11 @@ class AmsApp:
             label="Import legacy .ANI to .pmagani...",
             command=self._menu_cmd("files-legacy", self.ouvrir_import_legacy_ani_dialog))
         files_menu.add_command(
-            label="Create prmag from legacy .ANI...",
+            label="Create prmag & pmagani from legacy .ANI...",
             command=self._menu_cmd("files-legacy", self.ouvrir_creer_prmag_from_ani_dialog))
+        files_menu.add_command(
+            label="Create prmag & pmagani from .asc AGICO file...",
+            command=self._menu_cmd("files-legacy", self.ouvrir_creer_prmag_from_asc_dialog))
         files_menu.add_separator()
         files_menu.add_command(
             label="Archive ASC into .pmagani...",
@@ -735,6 +738,78 @@ class AmsApp:
         self.ani_path = pmagani_path
         self.selection = []
         self._showinfo("prmag created from legacy .ANI", msg)
+        self._afficher(msg)
+
+    def ouvrir_creer_prmag_from_asc_dialog(self):
+        """Cree un .prmag ET son .pmagani compagnon directement a partir
+        d'un rapport .asc AGICO Kappabridge - demande explicite
+        utilisateur ("ajouter en dessous de create prmag & pmagani from
+        legacy .ANI... : create prmag & pmagani from .asc AGICO file"),
+        equivalent de ouvrir_creer_prmag_from_ani_dialog mais lisant le
+        fichier de mesure natif du kappabridge plutot qu'un .ANI deja
+        converti - voir ams_prmag.create_prmag_from_asc pour le detail
+        (colonnes cin/caz/dip/str_, meme deduplication par specimen
+        qu'un .ANI : un specimen ATRM/AARM repete une ligne par variante
+        jackknife, toutes partageant la meme orientation).
+
+        Contrairement a la version .ANI (qui laisse un .pmagani DEJA
+        existant intact plutot que d'ecraser), le compagnon est ici
+        TOUJOURS construit via archive_asc_file : celle-ci est deja
+        incrementale par construction (n'ajoute que les specimens
+        vraiment nouveaux, ne touche jamais un .pmagani deja enrichi
+        cote AMS_Py - moyennes de site, colonne export) - reproduire ici
+        le garde-fou de la version .ANI serait redondant et empecherait
+        un reimport legitime (nouvelles semaines de mesure sur le meme
+        .asc, voir ouvrir_archiver_asc_dialog)."""
+        asc_path = filedialog.askopenfilename(
+            title="Select the AGICO .asc file",
+            filetypes=[("AGICO .asc", "*.asc *.ASC"), ("All files", "*.*")])
+        if not asc_path:
+            return
+        base, _ext = os.path.splitext(asc_path)
+        default_prmag_path = base + ".prmag"
+        prmag_path = filedialog.asksaveasfilename(
+            title="Save as .prmag", initialfile=os.path.basename(default_prmag_path),
+            initialdir=os.path.dirname(default_prmag_path),
+            defaultextension=".prmag", filetypes=[("STARpaleomag_Py .prmag", "*.prmag"), ("All files", "*.*")])
+        if not prmag_path:
+            return
+        try:
+            n_prmag, warnings = create_prmag_from_asc(asc_path, prmag_path)
+        except OSError as e:
+            self._showerror("Error", f"Could not read {asc_path}:\n{e}")
+            return
+        msg = (
+            f"{n_prmag} specimen(s) -> {prmag_path}\n"
+            "Only specimen id and core azimuth/dip/bedding come from the "
+            ".asc - site, date, geology, volume/mass are left as 'n.d'/"
+            "defaults (fill in later with STARpaleomag_Py's Complete "
+            "sample information...).\n"
+        )
+        if warnings:
+            msg += f"{len(warnings)} block(s) skipped:\n" + "\n".join(f"  {w}" for w in warnings[:20])
+            if len(warnings) > 20:
+                msg += f"\n  ... and {len(warnings) - 20} more"
+            msg += "\n"
+
+        pmagani_path = ani_path_for(prmag_path)
+        # `warnings` ci-dessus deja rapportes (meme fichier, meme parse
+        # que create_prmag_from_asc) - archive_asc_file reparse le meme
+        # .asc en interne (necessaire : elle a besoin des tenseurs, pas
+        # seulement de l'orientation) mais ses PROPRES warnings ne sont
+        # pas re-affiches, ce serait un doublon.
+        pmagani_path, new_measurements, already_present, _asc_warnings = archive_asc_file(asc_path, pmagani_path)
+        msg += (
+            f"Tensors archived -> {pmagani_path}\n"
+            f"{len(new_measurements)} new specimen(s), {len(already_present)} already present (skipped).\n"
+        )
+
+        self.prmag_specimens = read_prmag_specimens(prmag_path)
+        self.prmag_path = prmag_path
+        self.donnees = read_ani_file(pmagani_path)
+        self.ani_path = pmagani_path
+        self.selection = []
+        self._showinfo("prmag created from .asc", msg)
         self._afficher(msg)
 
     def ouvrir_archiver_asc_dialog(self):

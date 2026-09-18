@@ -103,7 +103,6 @@ def parse_asc_file(path: str) -> Tuple[List[AMSMeasurement], List[str]]:
                 raise ValueError("'Dip' line not found where expected")
             icin = int(dip_line[6:9])
 
-            cin = (90 - icin) if ii2 == 90 else float(icin)
             # P1/P2/P3/P4 : parametres d'orientation AGICO (REMA6W User
             # Manual 12.2, voir Agico_Orientation.pdf) - demande explicite
             # utilisateur ("il faut donc verifier... de la transformation
@@ -111,8 +110,7 @@ def parse_asc_file(path: str) -> Tuple[List[AMSMeasurement], List[str]]:
             # ci-joint", suite a une inquietude concrete sur les erreurs
             # d'orientation lors d'imports par des utilisateurs peu
             # attentifs, "comme on l'a vu avec les exportations
-            # d'Utrecht"). P2 (dip vs plunge complementaire) deja gere
-            # ci-dessus. P3 (direction mesuree sur le plan frontal,
+            # d'Utrecht"). P3 (direction mesuree sur le plan frontal,
             # convertie en azimuth du reperage carotte "caz") : les 3
             # valeurs deja verifiees contre de vrais fichiers (Caleu.ASC,
             # Roberto/24WH.asc, toutes P3=3) restent gerees comme avant ;
@@ -120,12 +118,13 @@ def parse_asc_file(path: str) -> Tuple[List[AMSMeasurement], List[str]]:
             # verifie - le bloc est saute plutot que de deviner une
             # formule non confirmee (import silencieux d'un azimuth faux
             # serait pire qu'un import refuse).
+            cin_raw = (90.0 - icin) if ii2 == 90 else float(icin)
             if ii3 == 6:
-                caz = float(iaz - 90)
+                caz_raw = float(iaz - 90)
             elif ii3 == 12:
-                caz = float(iaz + 90)
+                caz_raw = float(iaz + 90)
             elif ii3 == 3:
-                caz = float(iaz)
+                caz_raw = float(iaz)
             elif ii3 == 9:
                 raise ValueError(
                     "orientation parameter P3=9 (Left-handed Strike) is not "
@@ -136,21 +135,6 @@ def parse_asc_file(path: str) -> Tuple[List[AMSMeasurement], List[str]]:
                 )
             else:
                 raise ValueError(f"unrecognized orientation parameter P3={ii3} (expected 3/6/9/12)")
-
-            # P1 (direction de la fleche = axe x du specimen) : lu mais
-            # JAMAIS applique par la formule ci-dessus (P2/P3/P4 suffisent
-            # pour tous les fichiers reels verifies, toujours P1=12) - une
-            # valeur differente n'est pas forcement fausse, mais n'a
-            # jamais ete confirmee non plus : avertissement plutot que
-            # silence, specimen importe quand meme (contrairement a P3=9
-            # ci-dessus, ou aucune formule fiable n'existe du tout).
-            if ii1 is not None and ii1 != 12:
-                warnings.append(
-                    f"line {block_start_line}: specimen {samplename!r} declares "
-                    f"orientation parameter P1={ii1} (expected 12, upslope arrow) - "
-                    "this parser only verifies P2/P3/P4, never P1 - imported as-is, "
-                    "but double-check this specimen's azimuth by hand"
-                )
 
             strdip_line = None
             for _ in range(5):
@@ -163,8 +147,39 @@ def parse_asc_file(path: str) -> Tuple[List[AMSMeasurement], List[str]]:
             if len(toks) < 3:
                 raise ValueError("strike/dip line not parseable")
             istr, idip = int(toks[1]), int(toks[2])
-            str_ = (istr - 90.0) if ii4 == 0 else float(istr)
-            dip = float(idip)
+            str_raw = (istr - 90.0) if ii4 == 0 else float(istr)
+            dip_raw = float(idip)
+
+            # P1 (direction de la fleche = axe x du specimen) : lu, mais
+            # la formule ci-dessus (P2/P3/P4) suppose P1=12 comme TOUT le
+            # reste du pipeline (correction in-situ/tilt, trace...) - une
+            # valeur differente rend le resultat de cette formule non
+            # fiable, pas seulement P1 lui-meme. Demande explicite
+            # utilisateur ("Si P1 n'est pas = a 12... archiver les donnees
+            # echantillon comme celles definies par l'utilisateur et ne
+            # pas mettre de correction de carotte ni de strati. Est-ce
+            # possible d'avoir n.d dans ces cas") : cin/caz (correction de
+            # carotte) ET str_/dip (correction stratigraphique) valent
+            # 0.0 (meme convention "n.d" que _join_prmag_orientation pour
+            # un specimen sans .prmag correspondant - .pmagani n'a de
+            # toute facon pas de colonnes cin/caz/dip/str_ persistees,
+            # voir sa docstring) plutot que la valeur calculee - la
+            # donnee BRUTE en coordonnees specimen (k11..k13 plus bas)
+            # n'est, elle, JAMAIS affectee par P1/P2/P3/P4 et reste
+            # importee normalement.
+            if ii1 is not None and ii1 != 12:
+                warnings.append(
+                    f"line {block_start_line}: specimen {samplename!r} declares "
+                    f"orientation parameter P1={ii1} (expected 12, upslope arrow) - "
+                    "this app's whole pipeline (in-situ/tilt-corrected views, "
+                    "Correction sondage...) assumes P1=12, so core azimuth/dip and "
+                    "bedding strike/dip are left n.d rather than a P1=12-frame value "
+                    "that would be wrong for this specimen; the raw tensor itself is "
+                    "unaffected and still imported - orient this specimen by hand"
+                )
+                cin, caz, str_, dip = 0.0, 0.0, 0.0, 0.0
+            else:
+                cin, caz, str_, dip = cin_raw, caz_raw, str_raw, dip_raw
 
             # Scan jusqu'au marqueur "  susc.  " (branche F1/F3 : non
             # verifiee, portee telle quelle depuis le Fortran)

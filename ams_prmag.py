@@ -266,8 +266,20 @@ def create_prmag_from_asc(
     Hext) - reimplementer cette logique ici serait une duplication, pas
     une simplification.
 
+    cin/caz/dip/str_ passent par parse_asc_file, qui applique deja la
+    transformation AGICO P1/P2/P3/P4 (REMA6W 12.2) - et, depuis la
+    demande explicite utilisateur ("Si P1 n'est pas = a 12... archiver
+    les donnees echantillon comme celles definies par l'utilisateur et
+    ne pas mettre de correction de carotte ni de strati. Est-ce possible
+    d'avoir n.d dans ces cas"), ecrit n.d (0.0) plutot qu'une valeur
+    calculee des que P1 != 12 - CE .prmag herite donc du meme
+    comportement (memes champs, meme fonction), demande explicite
+    utilisateur confirmant que cette coherence est voulue plutot qu'un
+    traitement separe pour la creation vs l'archivage.
+
     Retourne (nombre de specimens uniques ecrits, avertissements de
-    parse_asc_file - blocs du .asc ignores, ex. mal formes)."""
+    parse_asc_file - blocs du .asc ignores, ex. mal formes, ou
+    orientation laissee n.d)."""
     measurements, warnings = parse_asc_file(asc_path)
     records = []
     seen_specimens = set()

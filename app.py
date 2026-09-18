@@ -786,11 +786,14 @@ class AmsApp:
             "defaults (fill in later with STARpaleomag_Py's Complete "
             "sample information...).\n"
             "ORIENTATION: this .asc declares its own AGICO P1/P2/P3/P4 "
-            "convention per specimen (REMA6W manual, 12.2) - if this file "
-            "wasn't measured under this lab's usual convention, double-"
-            "check azimuth/dip against the manual before trusting them, "
-            "especially for an older file. Not verifying this is exactly "
-            "what caused real errors before (Utrecht -> MagIC).\n"
+            "convention per specimen (REMA6W manual, 12.2). If P1 != 12, core "
+            "azimuth/dip and bedding are left n.d rather than guessed (this "
+            "app's pipeline assumes P1=12) - see 'issue(s) found' below if any "
+            "specimen was affected. Otherwise, if this file wasn't measured "
+            "under this lab's usual convention, double-check azimuth/dip "
+            "against the manual by hand, especially for an older file - not "
+            "verifying this is exactly what caused real errors before "
+            "(Utrecht -> MagIC).\n"
         )
         if warnings:
             msg += f"{len(warnings)} issue(s) found:\n" + "\n".join(f"  {w}" for w in warnings[:20])
@@ -885,11 +888,14 @@ class AmsApp:
                f"{len(new_measurements)} new specimen(s) archived, "
                f"{len(already_present)} already present (skipped).\n"
                "ORIENTATION: this .asc declares its own AGICO P1/P2/P3/P4 "
-               "convention per specimen (REMA6W manual, 12.2) - if this file "
+               "convention per specimen (REMA6W manual, 12.2). If P1 != 12, "
+               "core azimuth/dip and bedding are left n.d rather than guessed "
+               "(this app's pipeline assumes P1=12) - see 'issue(s) found' "
+               "below if any specimen was affected. Otherwise, if this file "
                "wasn't measured under this lab's usual convention, double-"
-               "check azimuth/dip against the manual before trusting them, "
-               "especially for an older file. Not verifying this is exactly "
-               "what caused real errors before (Utrecht -> MagIC).\n")
+               "check azimuth/dip against the manual by hand, especially for "
+               "an older file - not verifying this is exactly what caused "
+               "real errors before (Utrecht -> MagIC).\n")
         if warnings:
             msg += f"{len(warnings)} issue(s) found:\n" + "\n".join(f"  {w}" for w in warnings[:20])
             if len(warnings) > 20:

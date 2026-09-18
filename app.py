@@ -785,9 +785,15 @@ class AmsApp:
             ".asc - site, date, geology, volume/mass are left as 'n.d'/"
             "defaults (fill in later with STARpaleomag_Py's Complete "
             "sample information...).\n"
+            "ORIENTATION: this .asc declares its own AGICO P1/P2/P3/P4 "
+            "convention per specimen (REMA6W manual, 12.2) - if this file "
+            "wasn't measured under this lab's usual convention, double-"
+            "check azimuth/dip against the manual before trusting them, "
+            "especially for an older file. Not verifying this is exactly "
+            "what caused real errors before (Utrecht -> MagIC).\n"
         )
         if warnings:
-            msg += f"{len(warnings)} block(s) skipped:\n" + "\n".join(f"  {w}" for w in warnings[:20])
+            msg += f"{len(warnings)} issue(s) found:\n" + "\n".join(f"  {w}" for w in warnings[:20])
             if len(warnings) > 20:
                 msg += f"\n  ... and {len(warnings) - 20} more"
             msg += "\n"
@@ -877,9 +883,15 @@ class AmsApp:
             return
         msg = (f"Archived {path} -> {new_path}\n"
                f"{len(new_measurements)} new specimen(s) archived, "
-               f"{len(already_present)} already present (skipped).\n")
+               f"{len(already_present)} already present (skipped).\n"
+               "ORIENTATION: this .asc declares its own AGICO P1/P2/P3/P4 "
+               "convention per specimen (REMA6W manual, 12.2) - if this file "
+               "wasn't measured under this lab's usual convention, double-"
+               "check azimuth/dip against the manual before trusting them, "
+               "especially for an older file. Not verifying this is exactly "
+               "what caused real errors before (Utrecht -> MagIC).\n")
         if warnings:
-            msg += f"{len(warnings)} block(s) skipped:\n" + "\n".join(f"  {w}" for w in warnings[:20])
+            msg += f"{len(warnings)} issue(s) found:\n" + "\n".join(f"  {w}" for w in warnings[:20])
             if len(warnings) > 20:
                 msg += f"\n  ... and {len(warnings) - 20} more"
             msg += "\n"

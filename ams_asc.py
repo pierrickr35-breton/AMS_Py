@@ -104,12 +104,53 @@ def parse_asc_file(path: str) -> Tuple[List[AMSMeasurement], List[str]]:
             icin = int(dip_line[6:9])
 
             cin = (90 - icin) if ii2 == 90 else float(icin)
+            # P1/P2/P3/P4 : parametres d'orientation AGICO (REMA6W User
+            # Manual 12.2, voir Agico_Orientation.pdf) - demande explicite
+            # utilisateur ("il faut donc verifier... de la transformation
+            # adequat des conventions utilisees... Voir fichier pdf
+            # ci-joint", suite a une inquietude concrete sur les erreurs
+            # d'orientation lors d'imports par des utilisateurs peu
+            # attentifs, "comme on l'a vu avec les exportations
+            # d'Utrecht"). P2 (dip vs plunge complementaire) deja gere
+            # ci-dessus. P3 (direction mesuree sur le plan frontal,
+            # convertie en azimuth du reperage carotte "caz") : les 3
+            # valeurs deja verifiees contre de vrais fichiers (Caleu.ASC,
+            # Roberto/24WH.asc, toutes P3=3) restent gerees comme avant ;
+            # P3=9 (Left-handed Strike) n'a JAMAIS ete rencontre ni
+            # verifie - le bloc est saute plutot que de deviner une
+            # formule non confirmee (import silencieux d'un azimuth faux
+            # serait pire qu'un import refuse).
             if ii3 == 6:
                 caz = float(iaz - 90)
             elif ii3 == 12:
                 caz = float(iaz + 90)
-            else:  # ii3 == 3 (seul cas rencontre dans les donnees reelles)
+            elif ii3 == 3:
                 caz = float(iaz)
+            elif ii3 == 9:
+                raise ValueError(
+                    "orientation parameter P3=9 (Left-handed Strike) is not "
+                    "implemented - never encountered in a verified real .asc "
+                    "file, azimuth formula unconfirmed (see Agico_Orientation.pdf, "
+                    "REMA6W 12.2) - specimen skipped rather than risking a wrong "
+                    "azimuth; check it by hand"
+                )
+            else:
+                raise ValueError(f"unrecognized orientation parameter P3={ii3} (expected 3/6/9/12)")
+
+            # P1 (direction de la fleche = axe x du specimen) : lu mais
+            # JAMAIS applique par la formule ci-dessus (P2/P3/P4 suffisent
+            # pour tous les fichiers reels verifies, toujours P1=12) - une
+            # valeur differente n'est pas forcement fausse, mais n'a
+            # jamais ete confirmee non plus : avertissement plutot que
+            # silence, specimen importe quand meme (contrairement a P3=9
+            # ci-dessus, ou aucune formule fiable n'existe du tout).
+            if ii1 is not None and ii1 != 12:
+                warnings.append(
+                    f"line {block_start_line}: specimen {samplename!r} declares "
+                    f"orientation parameter P1={ii1} (expected 12, upslope arrow) - "
+                    "this parser only verifies P2/P3/P4, never P1 - imported as-is, "
+                    "but double-check this specimen's azimuth by hand"
+                )
 
             strdip_line = None
             for _ in range(5):

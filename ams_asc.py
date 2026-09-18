@@ -147,39 +147,14 @@ def parse_asc_file(path: str) -> Tuple[List[AMSMeasurement], List[str]]:
             if len(toks) < 3:
                 raise ValueError("strike/dip line not parseable")
             istr, idip = int(toks[1]), int(toks[2])
-            str_raw = (istr - 90.0) if ii4 == 0 else float(istr)
-            dip_raw = float(idip)
-
-            # P1 (direction de la fleche = axe x du specimen) : lu, mais
-            # la formule ci-dessus (P2/P3/P4) suppose P1=12 comme TOUT le
-            # reste du pipeline (correction in-situ/tilt, trace...) - une
-            # valeur differente rend le resultat de cette formule non
-            # fiable, pas seulement P1 lui-meme. Demande explicite
-            # utilisateur ("Si P1 n'est pas = a 12... archiver les donnees
-            # echantillon comme celles definies par l'utilisateur et ne
-            # pas mettre de correction de carotte ni de strati. Est-ce
-            # possible d'avoir n.d dans ces cas") : cin/caz (correction de
-            # carotte) ET str_/dip (correction stratigraphique) valent
-            # 0.0 (meme convention "n.d" que _join_prmag_orientation pour
-            # un specimen sans .prmag correspondant - .pmagani n'a de
-            # toute facon pas de colonnes cin/caz/dip/str_ persistees,
-            # voir sa docstring) plutot que la valeur calculee - la
-            # donnee BRUTE en coordonnees specimen (k11..k13 plus bas)
-            # n'est, elle, JAMAIS affectee par P1/P2/P3/P4 et reste
-            # importee normalement.
-            if ii1 is not None and ii1 != 12:
-                warnings.append(
-                    f"line {block_start_line}: specimen {samplename!r} declares "
-                    f"orientation parameter P1={ii1} (expected 12, upslope arrow) - "
-                    "this app's whole pipeline (in-situ/tilt-corrected views, "
-                    "Correction sondage...) assumes P1=12, so core azimuth/dip and "
-                    "bedding strike/dip are left n.d rather than a P1=12-frame value "
-                    "that would be wrong for this specimen; the raw tensor itself is "
-                    "unaffected and still imported - orient this specimen by hand"
-                )
-                cin, caz, str_, dip = 0.0, 0.0, 0.0, 0.0
-            else:
-                cin, caz, str_, dip = cin_raw, caz_raw, str_raw, dip_raw
+            # P4 (dip_direction vs strike/dip pour la couche) est
+            # TOUJOURS applique, meme si P1 != 12 (voir plus bas) -
+            # demande explicite utilisateur ("le facteur P4 indique
+            # toujours si on a la strati en dip_direction ou
+            # strike_dip") : independant de P1, qui ne concerne QUE
+            # l'axe du specimen (repere carotte), pas la strate.
+            str_ = (istr - 90.0) if ii4 == 0 else float(istr)
+            dip = float(idip)
 
             # Scan jusqu'au marqueur "  susc.  " (branche F1/F3 : non
             # verifiee, portee telle quelle depuis le Fortran)
@@ -257,15 +232,90 @@ def parse_asc_file(path: str) -> Tuple[List[AMSMeasurement], List[str]]:
             a1, a2, a3 = float(ctoks[3]), float(ctoks[4]), float(ctoks[5])
 
             k11 = k22 = k33 = k12 = k23 = k13 = None
+            geo_k11 = geo_k22 = geo_k33 = geo_k12 = geo_k23 = geo_k13 = None
             while i < n:
                 line = lines[i]; i += 1
                 if line[:8] == "Specimen":
                     k11 = float(line[45:52]); k22 = float(line[54:61]); k33 = float(line[63:70])
                     line2 = lines[i]; i += 1
                     k12 = float(line2[45:52]); k23 = float(line2[54:61]); k13 = float(line2[63:70])
+                    # Le tenseur "Geograph" (repere geographique/in-situ,
+                    # DEJA tourne par le logiciel AGICO lui-meme, avec
+                    # ses PROPRES parametres P1-P4 - suit immediatement
+                    # "Specimen", memes offsets de colonnes, une ligne
+                    # vide entre les deux) - capture opportuniste, sans
+                    # faire echouer le bloc si absent (ancien logiciel
+                    # AGICO ou format different) : voir son usage plus
+                    # bas (P1 != 12).
+                    try:
+                        if i < n and not lines[i].strip():
+                            i += 1
+                        if i + 1 < n and lines[i][:8] == "Geograph":
+                            geo_line1 = lines[i]; i += 1
+                            geo_line2 = lines[i]; i += 1
+                            geo_k11 = float(geo_line1[45:52])
+                            geo_k22 = float(geo_line1[54:61])
+                            geo_k33 = float(geo_line1[63:70])
+                            geo_k12 = float(geo_line2[45:52])
+                            geo_k23 = float(geo_line2[54:61])
+                            geo_k13 = float(geo_line2[63:70])
+                    except (ValueError, IndexError):
+                        geo_k11 = geo_k22 = geo_k33 = geo_k12 = geo_k23 = geo_k13 = None
                     break
             if k11 is None:
                 raise ValueError("'Specimen' tensor line not found")
+
+            # P1 (direction de la fleche = axe x du specimen) : lu, mais
+            # la formule cin_raw/caz_raw (P2/P3) suppose P1=12 comme TOUT
+            # le reste du pipeline (correction in-situ/tilt, trace...) -
+            # une valeur differente rend cette formule non fiable.
+            # Demande explicite utilisateur, en deux temps : d'abord
+            # "archiver les donnees echantillon comme celles definies par
+            # l'utilisateur et ne pas mettre de correction de carotte ni
+            # de strati. Est-ce possible d'avoir n.d dans ces cas", puis
+            # une alternative plus fine specifique a l'anisotropie ("les
+            # fichiers d'AMS .asc contiennent les tenseurs en coordonnees
+            # echantillons mais aussi en in situ... On peut donc creer un
+            # .prmag en enregistrant dip=0 et azimuth=90 et en
+            # enregistrant le pmagani en prenant le tenseur en in situ
+            # (qui sera alors le meme en Sample coordinate et en in situ
+            # dans AMS_Py)") : si le tenseur "Geograph" (in-situ, deja
+            # tourne par AGICO avec ses propres P1-P4 REELS) est
+            # disponible, on l'utilise directement comme tenseur
+            # "specimen" plutot que d'essayer de deviner la rotation -
+            # cin=0/caz=90 est alors l'IDENTITE pour corfor_tensor
+            # (verifie : cart(1,0,0)/cart(1,90,0)/cart(1,0,90) forment la
+            # matrice identite), donc "Sample coordinates" et "In situ
+            # coordinates" affichent le MEME tenseur (deja in-situ) dans
+            # AMS_Py, sans jamais avoir besoin de connaitre P1. Si ce
+            # tenseur n'est pas dans le fichier (ancien logiciel AGICO),
+            # retombe sur n.d (0.0/0.0) plutot que de deviner.
+            if ii1 is not None and ii1 != 12:
+                if geo_k11 is not None:
+                    k11, k22, k33, k12, k23, k13 = geo_k11, geo_k22, geo_k33, geo_k12, geo_k23, geo_k13
+                    cin, caz = 0.0, 90.0
+                    warnings.append(
+                        f"line {block_start_line}: specimen {samplename!r} declares "
+                        f"orientation parameter P1={ii1} (expected 12, upslope arrow) - "
+                        "used AGICO's own in-situ ('Geograph') tensor instead of the "
+                        "specimen-frame one, with a neutral core orientation "
+                        "(azimuth=90, dip=0) so no further rotation is applied to it - "
+                        "Sample and In situ coordinates will show the same (already "
+                        "in-situ) tensor in AMS_Py"
+                    )
+                else:
+                    cin, caz = 0.0, 0.0
+                    warnings.append(
+                        f"line {block_start_line}: specimen {samplename!r} declares "
+                        f"orientation parameter P1={ii1} (expected 12, upslope arrow), and "
+                        "no in-situ ('Geograph') tensor was found in this file to use "
+                        "instead - core azimuth/dip left n.d rather than a P1=12-frame "
+                        "value that would be wrong for this specimen; the raw "
+                        "specimen-frame tensor is still imported as-is - orient this "
+                        "specimen by hand"
+                    )
+            else:
+                cin, caz = cin_raw, caz_raw
 
         except (ValueError, IndexError) as e:
             warnings.append(f"line {block_start_line}: skipped block ({e})")

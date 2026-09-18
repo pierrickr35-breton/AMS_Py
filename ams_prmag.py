@@ -267,15 +267,20 @@ def create_prmag_from_asc(
     une simplification.
 
     cin/caz/dip/str_ passent par parse_asc_file, qui applique deja la
-    transformation AGICO P1/P2/P3/P4 (REMA6W 12.2) - et, depuis la
-    demande explicite utilisateur ("Si P1 n'est pas = a 12... archiver
-    les donnees echantillon comme celles definies par l'utilisateur et
-    ne pas mettre de correction de carotte ni de strati. Est-ce possible
-    d'avoir n.d dans ces cas"), ecrit n.d (0.0) plutot qu'une valeur
-    calculee des que P1 != 12 - CE .prmag herite donc du meme
-    comportement (memes champs, meme fonction), demande explicite
-    utilisateur confirmant que cette coherence est voulue plutot qu'un
-    traitement separe pour la creation vs l'archivage.
+    transformation AGICO P1/P2/P3/P4 (REMA6W 12.2), avec un cas
+    particulier pour P1 != 12 (demande explicite utilisateur, en deux
+    temps - voir parse_asc_file pour le detail complet) : si le fichier
+    .asc porte aussi le tenseur "Geograph" (in-situ, deja tourne par
+    AGICO avec ses propres P1-P4 reels), ce .prmag recoit azimuth=90/
+    dip=0 (rotation neutre - voir corfor_tensor cote AMS_Py, identite
+    verifiee pour ces valeurs) puisque le tenseur .pmagani correspondant
+    sera deja en in-situ ; sinon, azimuth/dip restent n.d (0.0), le
+    tenseur .pmagani restant lui en repere specimen brut. bed_dip_strike/
+    bed_dip (P4) sont, eux, TOUJOURS calcules normalement, independants
+    de P1. CE .prmag herite du meme comportement que l'archivage direct
+    (memes champs, meme fonction) - demande explicite utilisateur
+    confirmant que cette coherence est voulue plutot qu'un traitement
+    separe pour la creation vs l'archivage.
 
     Retourne (nombre de specimens uniques ecrits, avertissements de
     parse_asc_file - blocs du .asc ignores, ex. mal formes, ou

@@ -574,24 +574,25 @@ class AmsApp:
                     f"no companion .prmag file was found ({prmag_candidate}) - it stays at 0.0 "
                     "unless you open the matching .prmag file (AMS Files > Open File .prmag...).\n")
 
-    def ouvrir_prmag_dialog(self):
-        """Ouvre un fichier .prmag (STARpaleomag_Py) et charge automatiquement le
-        .pmagani compagnon (meme nom de base - voir ams_prmag.ani_path_for,
-        equivalent de calcul.ani_path_for cote STARpaleomag_Py) - demande
-        explicite utilisateur ("in AMS_py we also open .prmag but it
-        locates the .ANI"). Le .pmagani fournit le site/sample MagIC par
-        specimen, utilises par "Export to Magic" (le .pmagani lui-meme ne
-        garde que le numero de specimen - "we just keep the specimen
-        number in .ani"). Si aucun .pmagani n'existe encore, retombe sur
-        un ancien .ANI de meme nom de base (retro-compatibilite - voir
-        "Import legacy .ANI to .pmagani..." pour le convertir)."""
-        path = filedialog.askopenfilename(
-            title="Open File .prmag", filetypes=[("STARpaleomag_Py .prmag", "*.prmag"), ("All files", "*.*")])
-        if not path:
-            return
+    def _open_prmag_and_companion(self, path: str) -> str:
+        """Charge un .prmag DEJA EXISTANT SUR DISQUE (`path`) et son
+        .pmagani/.ANI compagnon (meme nom de base), avec jointure
+        d'orientation (`_join_prmag_orientation`) - factorise depuis
+        ouvrir_prmag_dialog pour etre reutilisable par du code qui vient
+        de CREER un .prmag+.pmagani (ouvrir_creer_prmag_from_ani_dialog/
+        ouvrir_creer_prmag_from_asc_dialog) et doit ensuite "l'ouvrir"
+        pour de vrai plutot que de dupliquer cette logique a la main (et
+        risquer de diverger, comme c'etait deja le cas : ces deux
+        dialogues sautaient la jointure d'orientation) - demande
+        explicite utilisateur ("lorsqu'on cree un nouveau fichier
+        .pmagani a partir d'un .asc, il faut automatiquement reouvrir le
+        fichier cree pour qu'il soit lie au nouveau .prmag").
+
+        Retourne le texte a afficher (memes messages qu'avant ce
+        refactor)."""
         self.prmag_specimens = read_prmag_specimens(path)
         self.prmag_path = path
-        self._afficher(f"nb specimens in prmag file: {len(self.prmag_specimens)}\n")
+        msg = f"nb specimens in prmag file: {len(self.prmag_specimens)}\n"
 
         candidate = ani_path_for(path)
         is_pmagani = os.path.exists(candidate)
@@ -611,10 +612,10 @@ class AmsApp:
                 # ici depuis le .prmag qu'on vient de charger, par
                 # jointure sur le numero de specimen.
                 missing = self._join_prmag_orientation()
-            self._afficher(f"companion file found: {candidate}\n"
-                            f"nb measurements in file: {len(self.donnees)}\n")
+            msg += (f"companion file found: {candidate}\n"
+                    f"nb measurements in file: {len(self.donnees)}\n")
             if missing:
-                self._afficher(self._format_missing_prmag_warning(missing))
+                msg += self._format_missing_prmag_warning(missing)
         else:
             # Ni .pmagani ni ancien .ANI : en cree un vide - demande
             # explicite utilisateur ("dans AMS_Py quand on ouvre un
@@ -632,7 +633,25 @@ class AmsApp:
             self.donnees = []
             self.ani_path = candidate
             self.selection = []
-            self._afficher(f"no companion .pmagani/.ANI file found - created an empty one: {candidate}\n")
+            msg += f"no companion .pmagani/.ANI file found - created an empty one: {candidate}\n"
+        return msg
+
+    def ouvrir_prmag_dialog(self):
+        """Ouvre un fichier .prmag (STARpaleomag_Py) et charge automatiquement le
+        .pmagani compagnon (meme nom de base - voir ams_prmag.ani_path_for,
+        equivalent de calcul.ani_path_for cote STARpaleomag_Py) - demande
+        explicite utilisateur ("in AMS_py we also open .prmag but it
+        locates the .ANI"). Le .pmagani fournit le site/sample MagIC par
+        specimen, utilises par "Export to Magic" (le .pmagani lui-meme ne
+        garde que le numero de specimen - "we just keep the specimen
+        number in .ani"). Si aucun .pmagani n'existe encore, retombe sur
+        un ancien .ANI de meme nom de base (retro-compatibilite - voir
+        "Import legacy .ANI to .pmagani..." pour le convertir)."""
+        path = filedialog.askopenfilename(
+            title="Open File .prmag", filetypes=[("STARpaleomag_Py .prmag", "*.prmag"), ("All files", "*.*")])
+        if not path:
+            return
+        self._afficher(self._open_prmag_and_companion(path))
 
     def ouvrir_import_legacy_ani_dialog(self):
         """Convertit un ANCIEN fichier .ANI (format list-directed Fortran,
@@ -732,11 +751,12 @@ class AmsApp:
             import_legacy_ani(ani_path, pmagani_path)
             msg += f"Also converted the tensors themselves -> {pmagani_path}\n"
 
-        self.prmag_specimens = read_prmag_specimens(prmag_path)
-        self.prmag_path = prmag_path
-        self.donnees = read_ani_file(pmagani_path)
-        self.ani_path = pmagani_path
-        self.selection = []
+        # Reouvre pour de vrai le .prmag qu'on vient de creer (jointure
+        # d'orientation incluse) plutot que de fixer les attributs a la
+        # main - demande explicite utilisateur ("il faut automatiquement
+        # reouvrir le fichier cree pour qu'il soit lie au nouveau
+        # .prmag"), voir _open_prmag_and_companion.
+        msg += self._open_prmag_and_companion(prmag_path)
         self._showinfo("prmag created from legacy .ANI", msg)
         self._afficher(msg)
 
@@ -815,11 +835,12 @@ class AmsApp:
             f"{len(new_measurements)} new specimen(s), {len(already_present)} already present (skipped).\n"
         )
 
-        self.prmag_specimens = read_prmag_specimens(prmag_path)
-        self.prmag_path = prmag_path
-        self.donnees = read_ani_file(pmagani_path)
-        self.ani_path = pmagani_path
-        self.selection = []
+        # Reouvre pour de vrai le .prmag qu'on vient de creer (jointure
+        # d'orientation incluse) plutot que de fixer les attributs a la
+        # main - demande explicite utilisateur ("il faut automatiquement
+        # reouvrir le fichier cree pour qu'il soit lie au nouveau
+        # .prmag"), voir _open_prmag_and_companion.
+        msg += self._open_prmag_and_companion(prmag_path)
         self._showinfo("prmag created from .asc", msg)
         self._afficher(msg)
 

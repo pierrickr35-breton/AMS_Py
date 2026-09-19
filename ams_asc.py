@@ -51,10 +51,31 @@ from ams_selection import (
 
 
 def _parse_op_quad(line: str) -> Tuple[Optional[int], Optional[int], Optional[int], Optional[int]]:
+    """Lit les 4 parametres d'orientation AGICO (P1/P2/P3/P4, "O.P. : .. ..
+    .. .." apres la colonne 23 de la ligne Azi) - demande explicite
+    utilisateur (rapport de bug reel : "AMS_Py seems unable to open this
+    .asc file", fichier de test nomme "12 _90 _12 _0.asc").
+
+    BUG REEL corrige ici : la version precedente decoupait a des
+    positions de colonnes FIXES (`seg[0:2]`, `seg[4:6]`, `seg[8:10]`,
+    `seg[12:14]`, un "champ" de 4 caracteres par valeur) - marche par
+    coincidence quand au plus UNE des 4 valeurs a 2 chiffres (tous les
+    fichiers reels verifies jusqu'ici, toujours P2/P3<=1 chiffre sauf
+    P1/P4), mais casse des que DEUX valeurs consecutives ont chacune 2
+    chiffres (ex. P1=12,P2=90,P3=12,P4=0 - la convention Utrecht) : le
+    fichier n'utilise PAS une largeur de colonne fixe par valeur, juste
+    un espacement variable entre nombres. Split sur les espaces (comme
+    n'importe quel autre champ de ce module) est fiable quel que soit le
+    nombre de chiffres de chaque valeur, verifie contre les DEUX styles
+    de fichiers reels (3 chiffres d'azimuth/1 chiffre de P2-P3 ET 2
+    chiffres partout)."""
     seg = line[23:]
+    toks = seg.split()
+    if len(toks) < 4:
+        return None, None, None, None
     try:
-        return int(seg[0:2]), int(seg[4:6]), int(seg[8:10]), int(seg[12:14])
-    except (ValueError, IndexError):
+        return int(toks[0]), int(toks[1]), int(toks[2]), int(toks[3])
+    except ValueError:
         return None, None, None, None
 
 

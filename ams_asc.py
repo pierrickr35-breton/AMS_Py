@@ -243,6 +243,14 @@ def parse_asc_file(path: str) -> Tuple[List[AMSMeasurement], List[str]]:
             if not found_susc or s_val is None:
                 raise ValueError("susceptibility marker not found")
             s_val *= 100000.0
+            if field_am is None:
+                # Champ non precise dans le fichier (toujours le cas pour la
+                # branche "  susc.  ", ancien format sans colonne de champ -
+                # seule la branche F1/F3 recente en porte un) - demande
+                # explicite utilisateur ("mettre une valeur de champ de 425
+                # Am-1, champ utilise sur la plupart des kappabridge, sauf si
+                # une valeur de champ est precisee dans le fichier").
+                field_am = 425.0
 
             for _ in range(6):
                 i += 1

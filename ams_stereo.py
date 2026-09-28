@@ -308,10 +308,9 @@ def build_stereo_figure(
     cadre du reseau + axes k1(carre)/k2(triangle)/k3(cercle) de chaque
     mesure de `measurements`, en couleur (rouge/vert/bleu). `mean_results`
     (optionnel) : resultats de moyenne tensorielle deja calcules, traces en
-    plus (equivalent partiel de `tratm`, symboles 2x plus grands pour les
-    distinguer des mesures individuelles)."""
+    plus (equivalent partiel de `tratm`, symboles 5/3 plus grands pour les
+    distinguer des mesures individuelles, voir _MEAN_SIZE_RATIO)."""
     dimster = 15.0  # rdim toujours 5.0*3 cote Fortran, quel que soit le prompt (bug reel confirme)
-    point_size = (0.18 * dimster) / 10.0
 
     if fig is None:
         fig = Figure(figsize=(5.5, 5.5), dpi=100)
@@ -323,6 +322,21 @@ def build_stereo_figure(
     ctx.plot(0.0, 0.0, -3)
 
     r = draw_stereo_net(ctx, orientation, ams_iproj, dimster)
+    # BUG REEL corrige ici (signale par l'utilisateur, "the symbols are too
+    # big for the mean tensors") : `point_size` etait calcule via
+    # `(0.18*dimster)/10` = 0.27 (pour dimster=15), une formule SANS
+    # rapport avec le vrai symbole Fortran - `stereo` (anisotropie.f:2123)
+    # trace ses points de donnees avec `h=r/25.` (r=dimster/3=5.0 ici, donc
+    # h=0.2), verifie directement dans le source. L'ancien correctif ("is
+    # it possible to reduce the size of the symbols for mean tensors",
+    # voir _MEAN_SIZE_RATIO) avait bien retrouve le vrai RATIO 5/3 entre
+    # tenseur moyen (`tratm`, h=r/15) et mesure individuelle (`stereo`,
+    # h=r/25), mais applique par-dessus cette base deja ~35% trop grande
+    # (0.27 au lieu de 0.2) - les DEUX tailles (mesures individuelles ET
+    # moyennes) en etaient donc gonflees dans la meme proportion, le
+    # tenseur moyen (deja le plus gros symbole) etant ou cela se voit le
+    # plus. `point_size = r/25.0` directement, comme le Fortran.
+    point_size = r / 25.0
     draw_stereo_axes(ctx, measurements, orientation, r, invert_negative, ams_iproj, point_size)
     if mean_results:
         draw_stereo_mean_results(ctx, mean_results, r, invert_negative, ams_iproj, point_size)
@@ -439,7 +453,6 @@ def build_bootstrap_stereo_figure(
     graphique de `ipmag.plot_aniso` (moyenne + confiance bootstrap) : nuage
     des tirages et/ou ellipse de Kent, superposes a la direction moyenne."""
     dimster = 15.0
-    point_size = (0.18 * dimster) / 10.0
 
     if fig is None:
         fig = Figure(figsize=(5.5, 5.5), dpi=100)
@@ -451,6 +464,10 @@ def build_bootstrap_stereo_figure(
     ctx.plot(0.0, 0.0, -3)
 
     r = draw_stereo_net(ctx, orientation, ams_iproj, dimster, show_orient_label=False)
+    # Meme correctif de base que build_stereo_figure (voir son commentaire) -
+    # point_size = r/25.0, la vraie taille Fortran d'un symbole de donnee
+    # (`stereo`, h=r/25.), au lieu de l'ancienne formule sans rapport.
+    point_size = r / 25.0
     if show_cloud:
         draw_stereo_bootstrap_cloud(ctx, result, r, invert_negative, ams_iproj)
     if show_ellipse:

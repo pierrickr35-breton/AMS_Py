@@ -225,7 +225,7 @@ def _write_prmag_records(prmag_path: str, records, volume: float) -> None:
             )
             f.write(f"bed_dip_strike: {bed_dip_strike}\tbed_dip: {bed_dip}\n")
             f.write(
-                "formation: n.d\tage: n.d\tgeologic_classes: n.d\t"
+                "formation: n.d\tage: n.d\tage_low: n.d\tage_high: n.d\tage_unit: n.d\tgeologic_classes: n.d\t"
                 "geologic_types: n.d\tlithologies: n.d\tlocation: n.d\t"
                 "obs: n.d\tmethod_codes: n.d\n"
             )

@@ -1010,6 +1010,9 @@ class AmsApp:
 
     _ANI_MAGIC_INFO = {
         "A0": ("ATRM", "LP-AN-TRM"),
+        # AA : tenseur d'aARM de STARpaleomag_Py (mesures LP-AN-ARM) ou
+        # importe de MagIC ; F0 : aARM des anciens .ANI.
+        "AA": ("AARM", "LP-AN-ARM"),
         "F0": ("AARM", "LP-AN-ARM"),
         "N0": ("AMS", "LP-X"),
     }
@@ -1155,7 +1158,7 @@ class AmsApp:
                 "or \"Select results\" first.")
             return
         code_s = self._console_input(
-            "Tensor type for all these means (A0=ATRM, F0=AARM, N0=AMS): ", "N0")
+            "Tensor type for all these means (A0=ATRM, AA or F0=AARM, N0=AMS): ", "N0")
         if code_s is None:
             return
         code_s = code_s.strip().upper() or "N0"
@@ -1230,7 +1233,7 @@ class AmsApp:
         skipped = []
         if self.mean_results:
             code_s = self._console_input(
-                "Tensor type for all these means (A0=ATRM, F0=AARM, N0=AMS): ", "N0")
+                "Tensor type for all these means (A0=ATRM, AA or F0=AARM, N0=AMS): ", "N0")
             if code_s is None:
                 return
             default_code2 = code_s.strip().upper() or "N0"
@@ -2102,7 +2105,7 @@ class AmsApp:
         if any(res.source_code2 is None for _o, res in results):
             code_s = self._console_input(
                 "Tensor type for the remaining mean(s) without a known Re/Im source "
-                "(A0=ATRM, F0=AARM, N0=AMS): ", "N0")
+                "(A0=ATRM, AA or F0=AARM, N0=AMS): ", "N0")
             if code_s is None:
                 return
             code2 = code_s.strip().upper() or "N0"

@@ -52,6 +52,7 @@ class PrmagSpecimen:
     caz: float = 0.0
     dip: float = 0.0
     str_: float = 0.0
+    location: str = ""
 
 
 def _prmag_kv_line(line: str) -> dict:
@@ -81,10 +82,10 @@ def _prmag_nd(txt: Optional[str], default: float = 0.0) -> float:
 
 def read_prmag_specimens(filepath: str, encoding: str = "utf-8") -> Dict[str, PrmagSpecimen]:
     """Lit un fichier .prmag et retourne {specimen_id: PrmagSpecimen}, en ne
-    parsant que les 3 premieres lignes d'entete de chaque bloc (specimen/
-    sample/site, puis azimuth/dip, puis bed_dip_strike/bed_dip - voir
-    testlect.read_prmag_file cote STARpaleomag_Py pour le detail complet du
-    format) ; le reste du bloc (4e ligne d'entete, mesures) est saute
+    parsant que les 4 premieres lignes d'entete de chaque bloc (specimen/
+    sample/site, puis azimuth/dip, puis bed_dip_strike/bed_dip, puis location
+    - voir testlect.read_prmag_file cote STARpaleomag_Py pour le detail
+    complet du format) ; le reste du bloc (mesures) est saute
     jusqu'a la ligne blanche suivante, sans etre interprete."""
     with open(filepath, "r", encoding=encoding) as f:
         lines = [raw.rstrip("\n") for raw in f]
@@ -102,6 +103,7 @@ def read_prmag_specimens(filepath: str, encoding: str = "utf-8") -> Dict[str, Pr
         line_a = _prmag_kv_line(lines[i])
         line_b = _prmag_kv_line(lines[i + 1]) if i + 1 < n else {}
         line_c = _prmag_kv_line(lines[i + 2]) if i + 2 < n else {}
+        line_d = _prmag_kv_line(lines[i + 3]) if i + 3 < n else {}
         specimen_id = _prmag_text(line_a.get("specimen"))
         if specimen_id:
             specimens[specimen_id] = PrmagSpecimen(
@@ -112,6 +114,7 @@ def read_prmag_specimens(filepath: str, encoding: str = "utf-8") -> Dict[str, Pr
                 cin=_prmag_nd(line_b.get("dip")),
                 str_=_prmag_nd(line_c.get("bed_dip_strike")),
                 dip=_prmag_nd(line_c.get("bed_dip")),
+                location=_prmag_text(line_d.get("location")),
             )
         while i < n and lines[i].strip() != "":
             i += 1

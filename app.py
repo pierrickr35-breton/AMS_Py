@@ -22,6 +22,7 @@ from tkinter import ttk, filedialog, messagebox
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
+from ams_magic import create_prmag_pmagani_from_magic
 from ams_selection import (
     AMSMeasurement,
     read_ani_file,
@@ -124,13 +125,19 @@ def _resource_path(*parts: str) -> str:
     return os.path.join(base, *parts)
 
 
+_ALL_LOCATIONS = "* (all)"
+
+
 class AmsApp:
     def __init__(self, root):
         self.root = root
         self.root.title("AMS_Py - Anisotropy of Magnetic Susceptibility")
         self.root.geometry("1100x700")
 
-        self.donnees: list = []    # toutes les mesures du fichier .ANI (equiv amsfichier)
+        self._location_box = None  # menu deroulant des locations, voir _setup_location_bar
+        self._prmag_specimens = {}
+        self._console_waiting = False
+        self.donnees: list = []    # toutes les mesures du fichier .ANI (equiv amsfichier), voir la propriete donnees
         self.selection: list = []  # mesures selectionnees (equiv ams(:))
         self.ani_path = None
         self.prmag_path = None
@@ -163,6 +170,7 @@ class AmsApp:
         self._setup_menu()
         self._setup_shortcuts()
 
+        self._setup_location_bar()
         self.paned_window = ttk.PanedWindow(self.root, orient=tk.HORIZONTAL)
         self.paned_window.pack(fill=tk.BOTH, expand=True)
 
@@ -286,11 +294,94 @@ class AmsApp:
 
         ret_id = self.text_area.bind("<Return>", on_return)
         esc_id = self.text_area.bind("<Escape>", on_escape)
+        self._console_waiting = True
         self.text_area.wait_variable(done)
+        self._console_waiting = False
         self.text_area.unbind("<Return>", ret_id)
         self.text_area.unbind("<Escape>", esc_id)
         self.text_area.see(tk.END)
         return outcome["value"]
+
+    @property
+    def donnees(self):
+        """Mesures de la location choisie (toutes si "* (all)") : tout le
+        programme ne voit que celles-la - demande explicite utilisateur ("la
+        selection des mesures et resultats restent contraintes dans cette
+        location"). Le fichier complet reste dans self._all_donnees."""
+        return self._donnees_view
+
+    @donnees.setter
+    def donnees(self, value):
+        # Un chargement repart toujours sur l'ensemble du fichier.
+        self._all_donnees = value
+        self._location = "*"
+        self._apply_location()
+        self._refresh_location_box()
+
+    @property
+    def prmag_specimens(self):
+        return self._prmag_specimens
+
+    @prmag_specimens.setter
+    def prmag_specimens(self, value):
+        self._prmag_specimens = value
+        self._refresh_location_box()
+
+    def _refresh_location_box(self):
+        if self._location_box is None:
+            return
+        names = sorted({s.location.strip() for s in self._prmag_specimens.values() if s.location.strip()})
+        self._location_box["values"] = [_ALL_LOCATIONS] + names
+        if self._location not in names:
+            self._location = "*"
+        self._apply_location()
+        self._location_box.set(_ALL_LOCATIONS if self._location == "*" else self._location)
+
+    def _apply_location(self):
+        members = {i: s for i, s in self._prmag_specimens.items() if s.location.strip() == self._location}
+        self._donnees_view = self._all_donnees if self._location == "*" else [
+            m for m in self._all_donnees if m.id in members]
+        self._location_ids = set(members)
+        self._location_sites = {s.site.strip() for s in members.values()}
+
+    def _setup_location_bar(self):
+        bar = ttk.Frame(self.root)
+        bar.pack(fill=tk.X)
+        ttk.Label(bar, text="Location:").pack(side=tk.LEFT, padx=(8, 4), pady=2)
+        self._location_box = ttk.Combobox(bar, state="readonly", width=40, values=[_ALL_LOCATIONS])
+        self._location_box.set(_ALL_LOCATIONS)
+        self._location_box.pack(side=tk.LEFT, pady=2)
+        self._location_box.bind("<<ComboboxSelected>>", self._on_location_selected)
+
+    def _mean_in_location(self, res) -> bool:
+        if self._location == "*":
+            return True
+        return (mean_result_site(res.id) or res.id.strip()) in self._location_sites
+
+    def _on_location_selected(self, _event=None):
+        chosen = self._location_box.get()
+        chosen = "*" if chosen == _ALL_LOCATIONS else chosen
+        # Pas de changement pendant une question en console : ses reponses
+        # s'appliqueraient a d'autres donnees que celles de son debut.
+        if self._console_waiting:
+            self._location_box.set(_ALL_LOCATIONS if self._location == "*" else self._location)
+            return
+        self._location_box.selection_clear()
+        if chosen == self._location:
+            self.text_area.focus_set()
+            return
+        self._location = chosen
+        self._apply_location()
+        n_sel, n_res = len(self.selection), len(self.mean_results)
+        if chosen != "*":
+            self.selection = [m for m in self.selection if m.id in self._location_ids]
+            self.mean_results = [e for e in self.mean_results if self._mean_in_location(e[1])]
+        self._afficher(
+            f"Location: {_ALL_LOCATIONS if chosen == '*' else chosen} - "
+            f"{len(self.donnees)} of {len(self._all_donnees)} measurement(s). "
+            f"Removed outside it: {n_sel - len(self.selection)} selected measurement(s), "
+            f"{n_res - len(self.mean_results)} mean result(s).\n")
+        self.text_area.focus_set()
 
     def _restore_focus(self):
         """Apres un popup natif (messagebox), le focus clavier ne revient
@@ -372,6 +463,9 @@ class AmsApp:
         files_menu.add_command(
             label="Create prmag & pmagani from .asc AGICO file...",
             command=self._menu_cmd("files-legacy", self.ouvrir_creer_prmag_from_asc_dialog))
+        files_menu.add_command(
+            label="Create prmag & pmagani from MagIC contribution...",
+            command=self._menu_cmd("files-legacy", self.ouvrir_creer_prmag_from_magic_dialog))
         files_menu.add_separator()
         files_menu.add_command(
             label="Archive ASC into .pmagani...",
@@ -865,6 +959,45 @@ class AmsApp:
         self._showinfo("prmag created from .asc", msg)
         self._afficher(msg)
 
+    def ouvrir_creer_prmag_from_magic_dialog(self):
+        """Cree un .prmag et son .pmagani depuis une contribution MagIC, puis
+        les ouvre - demande explicite utilisateur ("est-ce possible de
+        permettre la lecture des contributions MAGIC dans AMS_Py"), voir
+        ams_magic.py."""
+        magic_path = filedialog.askopenfilename(
+            title="Select the MagIC contribution (combined file, or specimens.txt)",
+            filetypes=[("MagIC text", "*.txt"), ("All files", "*.*")])
+        if not magic_path:
+            return
+        default_prmag_path = os.path.splitext(magic_path)[0] + ".prmag"
+        prmag_path = filedialog.asksaveasfilename(
+            title="Save as .prmag", initialfile=os.path.basename(default_prmag_path),
+            initialdir=os.path.dirname(default_prmag_path),
+            defaultextension=".prmag", filetypes=[("STARpaleomag_Py .prmag", "*.prmag"), ("All files", "*.*")])
+        if not prmag_path:
+            return
+        pmagani_path = ani_path_for(prmag_path)
+        try:
+            result = create_prmag_pmagani_from_magic(magic_path, prmag_path, pmagani_path)
+        except FileExistsError:
+            self._showerror("Error", f"{pmagani_path} already exists and was not overwritten:\n"
+                                     "choose another .prmag name.")
+            return
+        except OSError as e:
+            self._showerror("Error", f"Could not read {magic_path}:\n{e}")
+            return
+        if not result.measurements:
+            self._showerror("No anisotropy", "No anisotropy tensor found in this contribution:\n"
+                            + "\n".join(result.report))
+            return
+        msg = (f"{len(result.measurements)} tensor(s), {len(result.prmag_records)} specimen(s) -> {pmagani_path}\n"
+               f"{len(result.mean_lines)} site mean(s) archived\n")
+        if result.report:
+            msg += "\n".join(f"  {w}" for w in result.report) + "\n"
+        msg += self._open_prmag_and_companion(prmag_path)
+        self._showinfo("prmag created from MagIC", msg)
+        self._afficher(msg)
+
     def ouvrir_archiver_asc_dialog(self):
         """Archive un fichier .asc AGICO (rapport texte du kappabridge,
         logiciel SUSAR/Anisoft) dans un .pmagani - port de `readasc` (voir
@@ -1247,7 +1380,9 @@ class AmsApp:
                 selected_mean_keys.add((site.upper(), code2, tilt_code))
 
         n_spec_in, n_spec_out, n_mean_in, n_mean_out = mark_pmagani_export(
-            self.ani_path, selected_ids, selected_mean_keys)
+            self.ani_path, selected_ids, selected_mean_keys,
+            only_specimen_ids=None if self._location == "*" else {i.strip().upper() for i in self._location_ids},
+            only_sites=None if self._location == "*" else {s.upper() for s in self._location_sites})
 
         msg = (f"Export selection marked in {self.ani_path}\n"
                f"Specimens: {n_spec_in} kept (export=Y), {n_spec_out} excluded (export=N)\n"
@@ -2153,7 +2288,7 @@ class AmsApp:
         path = self._current_pmagani_path()
         if path is None:
             return
-        all_entries = read_ani_mean_results_from_pmagani(path)
+        all_entries = [e for e in read_ani_mean_results_from_pmagani(path) if self._mean_in_location(e[1])]
         if not all_entries:
             self._showwarning("No mean result", "No site mean tensor section found in this file.")
             return

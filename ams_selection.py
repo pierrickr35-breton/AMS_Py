@@ -567,6 +567,7 @@ def read_ani_mean_results_from_pmagani(path: str) -> List[Tuple[int, "TensorialM
 
 def mark_pmagani_export(
     path: str, selected_specimen_ids: "set", selected_mean_keys: "set",
+    only_specimen_ids: Optional["set"] = None, only_sites: Optional["set"] = None,
 ) -> Tuple[int, int, int, int]:
     """Reecrit .pmagani EN PLACE, colonne "export" UNIQUEMENT (Y pour les
     lignes selectionnees, N pour toutes les AUTRES lignes du MEME
@@ -608,6 +609,10 @@ def mark_pmagani_export(
     laissee TELLE QUELLE (ni touchee ni comptee) - reste lue "export=Y"
     par defaut par les deux applications.
 
+    `only_specimen_ids`/`only_sites` (MAJUSCULES, location choisie) : les
+    lignes des autres specimens/sites restent telles quelles, leur choix
+    d'export n'est pas ecrase.
+
     Retourne (specimens_inclus, specimens_exclus, moyennes_incluses,
     moyennes_exclues)."""
     with open(path, "r", encoding="utf-8", errors="replace") as f:
@@ -634,6 +639,9 @@ def mark_pmagani_export(
             if parts[0] == "specimen":
                 out_lines.append("\t".join(_PMAGANI_HEADER) if len(parts) < len(_PMAGANI_HEADER) else line)
                 continue
+            if only_specimen_ids is not None and parts[0].strip().upper() not in only_specimen_ids:
+                out_lines.append(line)
+                continue
             if len(parts) >= len(_PMAGANI_HEADER):
                 pass  # deja field_Am + export en place, index 16/17
             elif len(parts) >= _PMAGANI_HEADER_NO_FIELD_LEN:
@@ -656,6 +664,9 @@ def mark_pmagani_export(
                 continue
             if parts[0] == "site":
                 out_lines.append("\t".join(_PMAGANI_MEAN_HEADER) if len(parts) < len(_PMAGANI_MEAN_HEADER) else line)
+                continue
+            if only_sites is not None and parts[0].strip().upper() not in only_sites:
+                out_lines.append(line)
                 continue
             if len(parts) >= len(_PMAGANI_MEAN_HEADER):
                 pass  # deja tilt_correction+export en place, index 23/24

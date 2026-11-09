@@ -15,6 +15,7 @@ import math
 import os
 import subprocess
 import sys
+import pathlib
 import webbrowser
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
@@ -1739,7 +1740,9 @@ class AmsApp:
         if not os.path.exists(guide_path):
             self._showerror("Error", f"User guide not found:\n{guide_path}")
             return
-        url = f"file://{guide_path}"
+        # as_uri() : file:///... avec espaces/accents encodes et chemins Windows
+        # (C:\...) corrects - un simple f"file://{chemin}" echouait selon le systeme
+        url = pathlib.Path(guide_path).resolve().as_uri()
         if self._help_anchor:
             url += f"#{self._help_anchor}"
         webbrowser.open(url)

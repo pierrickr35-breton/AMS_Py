@@ -2591,6 +2591,21 @@ class AmsApp:
         self._refresh_current_graphic()
 
 
+def _set_dock_icon(root):
+    """Logo du programme dans le Dock (macOS) et la barre des taches, a la
+    place de la fusee Python quand on lance `python3 app.py` depuis un
+    .command - demande explicite utilisateur ("Comment peut on mettre un
+    logo ... a la place de la fusee Python"). resources/DockIcon.png ;
+    sans effet si absent ou illisible."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resources", "DockIcon.png")
+    try:
+        img = tk.PhotoImage(file=path)
+        root.iconphoto(True, img)
+        root._dock_icon = img          # garde une reference (sinon image liberee)
+    except Exception:
+        pass
+
+
 def main():
     root = tk.Tk()
     # Force l'encodage systeme de Tcl a utf-8 - demande explicite
@@ -2605,6 +2620,7 @@ def main():
     # affiches dans l'UI, pas une erreur de lecture de fichier).
     root.tk.call("encoding", "system", "utf-8")
     AmsApp(root)
+    _set_dock_icon(root)
     root.mainloop()
 
 
